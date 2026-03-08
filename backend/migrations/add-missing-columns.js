@@ -1,0 +1,97 @@
+// migrations/add-missing-columns.js
+// Run this to add missing columns to existing tables
+// Usage: node migrations/add-missing-columns.js
+
+require('dotenv').config();
+const { connectDB, closeDB, getPool } = require('../src/config/database');
+
+const alterations = [
+  // Notifications table - add missing columns
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'user_id')
+   ALTER TABLE notifications ADD user_id NVARCHAR(255)`,
+  
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'email_sent')
+   ALTER TABLE notifications ADD email_sent BIT DEFAULT 0`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'email_sent_at')
+   ALTER TABLE notifications ADD email_sent_at DATETIME`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'type')
+   ALTER TABLE notifications ADD type NVARCHAR(50)`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'title')
+   ALTER TABLE notifications ADD title NVARCHAR(255)`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'message')
+   ALTER TABLE notifications ADD message NVARCHAR(MAX)`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'data')
+   ALTER TABLE notifications ADD data NVARCHAR(MAX)`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'is_read')
+   ALTER TABLE notifications ADD is_read BIT DEFAULT 0`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'read_at')
+   ALTER TABLE notifications ADD read_at DATETIME`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'created_at')
+   ALTER TABLE notifications ADD created_at DATETIME DEFAULT GETDATE()`,
+
+  // Users table - add missing columns
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'preferred_language')
+   ALTER TABLE users ADD preferred_language NVARCHAR(10) DEFAULT 'en'`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'last_login')
+   ALTER TABLE users ADD last_login DATETIME`,
+
+  // Cabs table - add missing columns  
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('cabs') AND name = 'last_location_update')
+   ALTER TABLE cabs ADD last_location_update DATETIME`,
+
+  // Cab requests - add missing columns
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('cab_requests') AND name = 'priority')
+   ALTER TABLE cab_requests ADD priority NVARCHAR(20) DEFAULT 'NORMAL'`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('cab_requests') AND name = 'actual_pickup_time')
+   ALTER TABLE cab_requests ADD actual_pickup_time DATETIME`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('cab_requests') AND name = 'actual_dropoff_time')
+   ALTER TABLE cab_requests ADD actual_dropoff_time DATETIME`,
+   
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('cab_requests') AND name = 'delay_reason')
+   ALTER TABLE cab_requests ADD delay_reason NVARCHAR(500)`,
+];
+
+async function runMigrations() {
+  try {
+    console.log('Connecting to database...');
+    await connectDB();
+    const pool = getPool();
+    
+    console.log('Running migrations to add missing columns...\n');
+    
+    for (const sql of alterations) {
+      try {
+        await pool.request().query(sql);
+        // Extract column name from SQL for logging
+        const match = sql.match(/name = '(\w+)'/);
+        if (match) {
+          console.log(`✓ Checked/Added column: ${match[1]}`);
+        }
+      } catch (error) {
+        console.log(`⚠ Warning: ${error.message}`);
+      }
+    }
+    
+    console.log('\n✅ Migration completed successfully!');
+    
+  } catch (error) {
+    console.error('Migration failed:', error);
+    process.exit(1);
+  } finally {
+    await closeDB();
+    process.exit(0);
+  }
+}
+
+runMigrations();

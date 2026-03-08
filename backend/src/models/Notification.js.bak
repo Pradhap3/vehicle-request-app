@@ -1,0 +1,213 @@
+// src/models/Notification.js
+const { sql, getPool } = require('../config/database');
+const logger = require('../utils/logger');
+
+class Notification {
+  static async findById(id) {
+    try {
+      const pool = getPool();
+      const result = await pool.request()
+        .input('id', sql.Int, id)
+        .query(`
+          SELECT * FROM notifications WHERE id = @id
+        `);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error fetching notification by id:', error);
+      throw error;
+    }
+  }
+
+  static async findByUserId(userId, limit = 50) {
+    try {
+      const pool = getPool();
+      const result = await pool.request()
+        .input('user_id', sql.Int, userId)
+        .input('limit', sql.Int, limit)
+        .query(`
+          SELECT TOP (@limit) *
+          FROM notifications
+          WHERE user_id = @user_id
+          ORDER BY created_at DESC
+        `);
+      return result.recordset;
+    } catch (error) {
+      logger.error('Error fetching notifications:', error);
+      throw error;
+    }
+  }
+
+  static async create(notificationData) {
+    try {
+      const pool = getPool();
+      
+      const result = await pool.request()
+        .input('user_id', sql.Int, notificationData.user_id)
+        .input('type', sql.NVarChar(50), notificationData.type)
+        .input('title', sql.NVarChar(255), notificationData.title)
+        .input('message', sql.NVarChar(1000), notificationData.message)
+        .input('data', sql.NVarChar(sql.MAX), JSON.stringify(notificationData.data || {}))
+        .input('is_read', sql.Bit, false)
+        .input('email_sent', sql.Bit, false)
+        .query(`
+          INSERT INTO notifications (user_id, type, title, message, data, is_read, email_sent, created_at)
+          OUTPUT INSERTED.*
+          VALUES (@user_id, @type, @title, @message, @data, @is_read, @email_sent, GETDATE())
+        `);
+      
+      logger.info(`Notification created for user ${notificationData.user_id}`);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error creating notification:', error);
+      throw error;
+    }
+  }
+
+  static async createBulk(notifications) {
+    try {
+      const pool = getPool();
+      const results = [];
+      
+      for (const notification of notifications) {
+        const result = await this.create(notification);
+        results.push(result);
+      }
+      
+      return results;
+    } catch (error) {
+      logger.error('Error creating bulk notifications:', error);
+      throw error;
+    }
+  }
+
+  static async markAsRead(id, userId = null) {
+    try {
+      const pool = getPool();
+      
+      let query = `
+        UPDATE notifications 
+        SET is_read = 1, read_at = GETDATE()
+        OUTPUT INSERTED.*
+        WHERE id = @id
+      `;
+      const request = pool.request().input('id', sql.Int, id);
+      
+      if (userId) {
+        query = `
+          UPDATE notifications 
+          SET is_read = 1, read_at = GETDATE()
+          OUTPUT INSERTED.*
+          WHERE id = @id AND user_id = @user_id
+        `;
+        request.input('user_id', sql.Int, userId);
+      }
+      
+      const result = await request.query(query);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error marking notification as read:', error);
+      throw error;
+    }
+  }
+
+  static async markAllAsRead(userId) {
+    try {
+      const pool = getPool();
+      
+      await pool.request()
+        .input('user_id', sql.Int, userId)
+        .query(`
+          UPDATE notifications 
+          SET is_read = 1, read_at = GETDATE()
+          WHERE user_id = @user_id AND is_read = 0
+        `);
+      
+      return { success: true };
+    } catch (error) {
+      logger.error('Error marking all notifications as read:', error);
+      throw error;
+    }
+  }
+
+  static async markEmailSent(id) {
+    try {
+      const pool = getPool();
+      
+      await pool.request()
+        .input('id', sql.Int, id)
+        .query(`
+          UPDATE notifications 
+          SET email_sent = 1, email_sent_at = GETDATE()
+          WHERE id = @id
+        `);
+      
+      return { success: true };
+    } catch (error) {
+      logger.error('Error marking email as sent:', error);
+      throw error;
+    }
+  }
+
+  static async getUnreadCount(userId) {
+    try {
+      const pool = getPool();
+      const result = await pool.request()
+        .input('user_id', sql.Int, userId)
+        .query(`
+          SELECT COUNT(*) as count
+          FROM notifications
+          WHERE user_id = @user_id AND is_read = 0
+        `);
+      return result.recordset[0].count;
+    } catch (error) {
+      logger.error('Error getting unread count:', error);
+      throw error;
+    }
+  }
+
+  static async delete(id, userId = null) {
+    try {
+      const pool = getPool();
+      
+      let query = `DELETE FROM notifications OUTPUT DELETED.id WHERE id = @id`;
+      const request = pool.request().input('id', sql.Int, id);
+      
+      if (userId) {
+        query = `DELETE FROM notifications OUTPUT DELETED.id WHERE id = @id AND user_id = @user_id`;
+        request.input('user_id', sql.Int, userId);
+      }
+      
+      const result = await request.query(query);
+      
+      if (result.recordset.length === 0) {
+        throw new Error('Notification not found');
+      }
+      
+      return { success: true };
+    } catch (error) {
+      logger.error('Error deleting notification:', error);
+      throw error;
+    }
+  }
+
+  static async getPendingEmailNotifications(limit = 100) {
+    try {
+      const pool = getPool();
+      const result = await pool.request()
+        .input('limit', sql.Int, limit)
+        .query(`
+          SELECT TOP (@limit) n.*, u.email, u.name as user_name, u.preferred_language
+          FROM notifications n
+          INNER JOIN users u ON n.user_id = u.id
+          WHERE n.email_sent = 0 AND u.email IS NOT NULL
+          ORDER BY n.created_at ASC
+        `);
+      return result.recordset;
+    } catch (error) {
+      logger.error('Error fetching pending email notifications:', error);
+      throw error;
+    }
+  }
+}
+
+module.exports = Notification;

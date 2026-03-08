@@ -1,0 +1,168 @@
+// src/models/Route.js
+const { sql, getPool } = require('../config/database');
+const logger = require('../utils/logger');
+const { v4: uuidv4 } = require('uuid');
+
+class Route {
+  static async findAll() {
+    try {
+      const pool = getPool();
+      const result = await pool.request()
+        .query(`
+          SELECT * FROM routes
+          WHERE is_active = 1
+          ORDER BY name
+        `);
+      return result.recordset;
+    } catch (error) {
+      logger.error('Error fetching routes:', error);
+      throw error;
+    }
+  }
+
+  static async findById(id) {
+    try {
+      const pool = getPool();
+      const result = await pool.request()
+        .input('id', sql.NVarChar(255), id)
+        .query(`SELECT * FROM routes WHERE id = @id`);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error finding route by ID:', error);
+      throw error;
+    }
+  }
+
+  static async create(routeData) {
+    try {
+      const pool = getPool();
+      const newId = uuidv4().toUpperCase();
+      
+      const result = await pool.request()
+        .input('id', sql.NVarChar(255), newId)
+        .input('name', sql.NVarChar(255), routeData.name)
+        .input('start_point', sql.NVarChar(500), routeData.start_point)
+        .input('end_point', sql.NVarChar(500), routeData.end_point)
+        .input('distance_km', sql.Float, routeData.distance_km || 0)
+        .input('estimated_time_minutes', sql.Int, routeData.estimated_time_minutes || 0)
+        .input('is_active', sql.Bit, routeData.is_active !== false ? 1 : 0)
+        .query(`
+          INSERT INTO routes (id, name, start_point, end_point, distance_km, 
+                             estimated_time_minutes, is_active, created_at, updated_at)
+          OUTPUT INSERTED.*
+          VALUES (@id, @name, @start_point, @end_point, @distance_km,
+                  @estimated_time_minutes, @is_active, GETDATE(), GETDATE())
+        `);
+      
+      logger.info(`Route created: ${routeData.name}`);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error creating route:', error);
+      throw error;
+    }
+  }
+
+  static async update(id, routeData) {
+    try {
+      const pool = getPool();
+      const request = pool.request().input('id', sql.NVarChar(255), id);
+      
+      const updates = [];
+      
+      if (routeData.name) {
+        request.input('name', sql.NVarChar(255), routeData.name);
+        updates.push('name = @name');
+      }
+      if (routeData.start_point) {
+        request.input('start_point', sql.NVarChar(500), routeData.start_point);
+        updates.push('start_point = @start_point');
+      }
+      if (routeData.end_point) {
+        request.input('end_point', sql.NVarChar(500), routeData.end_point);
+        updates.push('end_point = @end_point');
+      }
+      if (routeData.distance_km !== undefined) {
+        request.input('distance_km', sql.Float, routeData.distance_km);
+        updates.push('distance_km = @distance_km');
+      }
+      if (routeData.estimated_time_minutes !== undefined) {
+        request.input('estimated_time_minutes', sql.Int, routeData.estimated_time_minutes);
+        updates.push('estimated_time_minutes = @estimated_time_minutes');
+      }
+      if (routeData.is_active !== undefined) {
+        request.input('is_active', sql.Bit, routeData.is_active);
+        updates.push('is_active = @is_active');
+      }
+      
+      updates.push('updated_at = GETDATE()');
+      
+      const result = await request.query(`
+        UPDATE routes 
+        SET ${updates.join(', ')}
+        OUTPUT INSERTED.*
+        WHERE id = @id
+      `);
+      
+      logger.info(`Route updated: ${id}`);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error updating route:', error);
+      throw error;
+    }
+  }
+
+  static async delete(id) {
+    try {
+      const pool = getPool();
+      
+      const result = await pool.request()
+        .input('id', sql.NVarChar(255), id)
+        .query(`
+          UPDATE routes 
+          SET is_active = 0, updated_at = GETDATE()
+          OUTPUT INSERTED.id
+          WHERE id = @id
+        `);
+      
+      if (result.recordset.length === 0) {
+        throw new Error('Route not found');
+      }
+      
+      logger.info(`Route deactivated: ${id}`);
+      return { success: true, id };
+    } catch (error) {
+      logger.error('Error deleting route:', error);
+      throw error;
+    }
+  }
+
+  static async getRouteWithAssignments(id) {
+    try {
+      const route = await this.findById(id);
+      if (!route) return null;
+      return route;
+    } catch (error) {
+      logger.error('Error getting route with assignments:', error);
+      throw error;
+    }
+  }
+
+  static async getOptimalRoute(startLat, startLng, endLat, endLng) {
+    const R = 6371;
+    const dLat = (endLat - startLat) * Math.PI / 180;
+    const dLng = (endLng - startLng) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(startLat * Math.PI / 180) * Math.cos(endLat * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c;
+    const estimatedMinutes = Math.round((distance / 30) * 60);
+    
+    return {
+      distance_km: Math.round(distance * 10) / 10,
+      estimated_time_minutes: estimatedMinutes
+    };
+  }
+}
+
+module.exports = Route;
