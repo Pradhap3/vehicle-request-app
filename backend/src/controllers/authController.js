@@ -3,6 +3,21 @@ const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const { connectDB } = require('../config/database');
+
+const isDatabaseUnavailableError = (error) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('database not connected') ||
+    msg.includes('cannot open server') ||
+    msg.includes('elogin') ||
+    msg.includes('esocket')
+  );
+};
+
+const ensureDbConnection = async () => {
+  await connectDB();
+};
 
 const generateToken = (user) => {
   return jwt.sign(
@@ -36,6 +51,7 @@ exports.login = async (req, res) => {
     }
 
     const { email, password } = req.body;
+    await ensureDbConnection();
 
     // Find user by email
     const user = await User.findByEmail(email);
@@ -94,6 +110,12 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
+    if (isDatabaseUnavailableError(error)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database temporarily unavailable. Please retry in a few minutes.'
+      });
+    }
     res.status(500).json({
       success: false,
       error: 'Login failed. Please try again.'
@@ -105,6 +127,7 @@ exports.login = async (req, res) => {
 exports.refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
+    await ensureDbConnection();
 
     if (!refreshToken) {
       return res.status(400).json({
@@ -135,6 +158,12 @@ exports.refreshToken = async (req, res) => {
     });
   } catch (error) {
     logger.error('Refresh token error:', error);
+    if (isDatabaseUnavailableError(error)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database temporarily unavailable. Please retry in a few minutes.'
+      });
+    }
     res.status(401).json({
       success: false,
       error: 'Invalid refresh token'
@@ -145,6 +174,7 @@ exports.refreshToken = async (req, res) => {
 // Get current user
 exports.getMe = async (req, res) => {
   try {
+    await ensureDbConnection();
     const user = await User.findById(req.user.id);
     
     res.json({
@@ -163,6 +193,12 @@ exports.getMe = async (req, res) => {
     });
   } catch (error) {
     logger.error('Get me error:', error);
+    if (isDatabaseUnavailableError(error)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database temporarily unavailable. Please retry in a few minutes.'
+      });
+    }
     res.status(500).json({
       success: false,
       error: 'Failed to get user data'

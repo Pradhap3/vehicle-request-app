@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { userAPI } from '../services/api';
+import { userAPI, routeAPI } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   Plus, 
   Search, 
@@ -81,7 +82,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, userName, loading }) =
   );
 };
 
-const UserForm = ({ user, onSubmit, onCancel, loading }) => {
+const UserForm = ({ user, routes, onSubmit, onCancel, loading }) => {
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -89,6 +90,7 @@ const UserForm = ({ user, onSubmit, onCancel, loading }) => {
     phone: user?.phone || '',
     department: user?.department || '',
     role: user?.role || 'EMPLOYEE',
+    route_ids: user?.route_ids || [],
     password: '',
     is_active: user?.is_active !== false
   });
@@ -221,6 +223,30 @@ const UserForm = ({ user, onSubmit, onCancel, loading }) => {
           </div>
         </div>
 
+        {(formData.role === 'CAB_DRIVER' || formData.role === 'DRIVER') && (
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Assigned Routes
+            </label>
+            <select
+              multiple
+              value={formData.route_ids}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
+                setFormData({ ...formData, route_ids: selected });
+              }}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white min-h-[120px]"
+            >
+              {routes.map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.name} ({route.start_point} {'->'} {route.end_point})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple routes</p>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Password {!user && <span className="text-red-500">*</span>}
@@ -281,7 +307,9 @@ const UserForm = ({ user, onSubmit, onCancel, loading }) => {
 };
 
 const UsersPage = () => {
+  const { t } = useLanguage();
   const [users, setUsers] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -293,8 +321,12 @@ const UsersPage = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await userAPI.getAll({ search: searchTerm, role: roleFilter });
-      setUsers(response.data.data || response.data.users || []);
+      const [usersRes, routesRes] = await Promise.all([
+        userAPI.getAll({ search: searchTerm, role: roleFilter }),
+        routeAPI.getAll({ active: true }).catch(() => ({ data: { data: [] } }))
+      ]);
+      setUsers(usersRes.data.data || usersRes.data.users || []);
+      setRoutes(routesRes.data.data || routesRes.data.routes || []);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast.error('Failed to load users');
@@ -372,15 +404,15 @@ const UsersPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Users ({users.length})</h1>
-          <p className="text-gray-500">Manage system users and their roles</p>
+          <h1 className="text-2xl font-bold text-gray-800">{t('nav_users')} ({users.length})</h1>
+          <p className="text-gray-500">{t('users_manage_desc')}</p>
         </div>
         <button
           onClick={() => { setSelectedUser(null); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
         >
           <Plus size={20} />
-          Create User
+          {t('users_create')}
         </button>
       </div>
 
@@ -392,7 +424,7 @@ const UsersPage = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search users..."
+            placeholder={t('search_users')}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           />
         </div>
@@ -401,7 +433,7 @@ const UsersPage = () => {
           onChange={(e) => setRoleFilter(e.target.value)}
           className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white"
         >
-          <option value="">All Roles</option>
+          <option value="">{t('all_roles')}</option>
           <option value="HR_ADMIN">HR Admin</option>
           <option value="CAB_DRIVER">Cab Driver</option>
           <option value="EMPLOYEE">Employee</option>
@@ -417,13 +449,13 @@ const UsersPage = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <User size={48} className="mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-800 mb-2">No users found</h3>
-          <p className="text-gray-500 mb-4">Get started by creating a new user</p>
+          <p className="text-gray-500 mb-4">{t('users_empty_desc')}</p>
           <button
             onClick={() => { setSelectedUser(null); setIsModalOpen(true); }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
           >
             <Plus size={18} />
-            Create User
+            {t('users_create')}
           </button>
         </div>
       ) : (
@@ -488,10 +520,11 @@ const UsersPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedUser(null); }}
-        title={selectedUser ? 'Edit User' : 'Create New User'}
+        title={selectedUser ? t('users_edit') : t('users_create_new')}
       >
         <UserForm
           user={selectedUser}
+          routes={routes}
           onSubmit={selectedUser ? handleUpdateUser : handleCreateUser}
           onCancel={() => { setIsModalOpen(false); setSelectedUser(null); }}
           loading={actionLoading}

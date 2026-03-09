@@ -4,6 +4,29 @@ const { sql, getPool } = require('../config/database');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const bindFlexibleId = (request, paramName, id) => {
+  if (id === null || id === undefined) {
+    request.input(paramName, sql.NVarChar(255), null);
+    return;
+  }
+  if (typeof id === 'number' && Number.isInteger(id)) {
+    request.input(paramName, sql.Int, id);
+    return;
+  }
+  const normalized = String(id).trim();
+  if (/^\d+$/.test(normalized)) {
+    request.input(paramName, sql.Int, parseInt(normalized, 10));
+    return;
+  }
+  if (UUID_REGEX.test(normalized)) {
+    request.input(paramName, sql.UniqueIdentifier, normalized);
+    return;
+  }
+  request.input(paramName, sql.NVarChar(255), normalized);
+};
+
 class CabRequest {
   static schemaCache = null;
 
@@ -76,7 +99,9 @@ class CabRequest {
       hasColumn,
       idIsIdentity: Boolean(idMeta && idMeta.is_identity === 1),
       pickupColumn: pickColumn(['departure_location', 'boarding_area', 'pickup_location']),
-      dropColumn: pickColumn(['destination_location', 'dropping_area', 'drop_location', 'dropoff_location'])
+      dropColumn: pickColumn(['destination_location', 'dropping_area', 'drop_location', 'dropoff_location']),
+      requestTimeColumn: pickColumn(['requested_time', 'pickup_time', 'created_at']),
+      assignmentColumn: pickColumn(['assigned_cab_id', 'cab_id'])
     };
 
     return this.schemaCache;
@@ -94,11 +119,11 @@ class CabRequest {
         whereConditions.push('cr.status = @status');
       }
       if (filters.employee_id) {
-        request.input('employee_id', sql.NVarChar(255), filters.employee_id);
+        bindFlexibleId(request, 'employee_id', filters.employee_id);
         whereConditions.push('cr.employee_id = @employee_id');
       }
       if (filters.route_id) {
-        request.input('route_id', sql.NVarChar(255), filters.route_id);
+        bindFlexibleId(request, 'route_id', filters.route_id);
         whereConditions.push('cr.route_id = @route_id');
       }
       
@@ -123,8 +148,9 @@ class CabRequest {
   static async findById(id) {
     try {
       const pool = getPool();
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), id)
+      const request = pool.request();
+      bindFlexibleId(request, 'id', id);
+      const result = await request
         .query(`
           SELECT cr.*, 
                  e.name as employee_name, e.email as employee_email, e.phone as employee_phone, e.department,
@@ -159,13 +185,13 @@ class CabRequest {
       }
 
       if (schema.hasColumn('employee_id')) {
-        request.input('employee_id', sql.NVarChar(255), requestData.employee_id);
+        bindFlexibleId(request, 'employee_id', requestData.employee_id);
         insertColumns.push('employee_id');
         insertValues.push('@employee_id');
       }
 
       if (schema.hasColumn('route_id')) {
-        request.input('route_id', sql.NVarChar(255), requestData.route_id || null);
+        bindFlexibleId(request, 'route_id', requestData.route_id || null);
         insertColumns.push('route_id');
         insertValues.push('@route_id');
       }
@@ -273,12 +299,13 @@ class CabRequest {
     try {
       const pool = getPool();
       const schema = await this.getCabRequestSchema();
-      const request = pool.request().input('id', sql.NVarChar(255), id);
+      const request = pool.request();
+      bindFlexibleId(request, 'id', id);
       
       const updates = [];
       
       if (schema.hasColumn('route_id') && requestData.route_id !== undefined) {
-        request.input('route_id', sql.NVarChar(255), requestData.route_id);
+        bindFlexibleId(request, 'route_id', requestData.route_id);
         updates.push('route_id = @route_id');
       }
       if (schema.hasColumn('status') && requestData.status) {
@@ -328,6 +355,10 @@ class CabRequest {
         request.input('priority', sql.NVarChar(40), requestData.priority);
         updates.push('priority = @priority');
       }
+      if (schema.assignmentColumn && (requestData.cab_id !== undefined || requestData.assigned_cab_id !== undefined)) {
+        bindFlexibleId(request, 'assigned_cab_id', requestData.assigned_cab_id ?? requestData.cab_id ?? null);
+        updates.push(`${schema.assignmentColumn} = @assigned_cab_id`);
+      }
       if (schema.hasColumn('number_of_people') && requestData.number_of_people !== undefined) {
         request.input('number_of_people', sql.Int, requestData.number_of_people);
         updates.push('number_of_people = @number_of_people');
@@ -358,7 +389,7 @@ class CabRequest {
     try {
       const pool = getPool();
       const result = await pool.request()
-        .input('id', sql.NVarChar(255), id)
+        .input('id', /^\d+$/.test(String(id)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(id)) ? parseInt(String(id), 10) : id)
         .query(`DELETE FROM cab_requests OUTPUT DELETED.id WHERE id = @id`);
       
       if (result.recordset.length === 0) {
@@ -375,12 +406,17 @@ class CabRequest {
   static async assignCab(requestId, cabId) {
     try {
       const pool = getPool();
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), requestId)
-        .input('status', sql.NVarChar(50), 'APPROVED')
-        .query(`
-          UPDATE cab_requests 
+      const schema = await this.getCabRequestSchema();
+      const request = pool.request();
+      bindFlexibleId(request, 'id', requestId);
+      request.input('status', sql.NVarChar(50), 'APPROVED');
+      if (schema.assignmentColumn) {
+        bindFlexibleId(request, 'cab_id', cabId);
+      }
+      const result = await request.query(`
+          UPDATE cab_requests
           SET status = @status
+              ${schema.assignmentColumn ? `, ${schema.assignmentColumn} = @cab_id` : ''}
           OUTPUT INSERTED.*
           WHERE id = @id
         `);
@@ -396,8 +432,9 @@ class CabRequest {
   static async cancel(requestId, reason) {
     try {
       const pool = getPool();
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), requestId)
+      const request = pool.request();
+      bindFlexibleId(request, 'id', requestId);
+      const result = await request
         .query(`
           UPDATE cab_requests 
           SET status = 'CANCELLED'
@@ -441,7 +478,7 @@ class CabRequest {
     try {
       const pool = getPool();
       const result = await pool.request()
-        .input('route_id', sql.NVarChar(255), routeId)
+        .input('route_id', /^\d+$/.test(String(routeId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(routeId)) ? parseInt(String(routeId), 10) : routeId)
         .query(`
           SELECT cr.*, e.name as employee_name, e.phone as employee_phone
           FROM cab_requests cr
@@ -461,7 +498,7 @@ class CabRequest {
     try {
       const pool = getPool();
       const result = await pool.request()
-        .input('employee_id', sql.NVarChar(255), employeeId)
+        .input('employee_id', /^\d+$/.test(String(employeeId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(employeeId)) ? parseInt(String(employeeId), 10) : employeeId)
         .query(`
           SELECT cr.*, 
                  r.name as route_name, r.start_point, r.end_point
@@ -474,6 +511,150 @@ class CabRequest {
     } catch (error) {
       logger.error('Error getting requests by employee:', error);
       return [];
+    }
+  }
+
+  static async getAssignedRequestsForCab(cabId, date = null) {
+    try {
+      const pool = getPool();
+      const schema = await this.getCabRequestSchema();
+      if (!schema.assignmentColumn) return [];
+
+      const request = pool.request();
+      bindFlexibleId(request, 'cab_id', cabId);
+      let dateFilter = '';
+      const timeCol = schema.requestTimeColumn || 'created_at';
+      if (date) {
+        request.input('trip_date', sql.Date, date);
+        dateFilter = `AND CAST(cr.${timeCol} AS DATE) = @trip_date`;
+      }
+
+      const result = await request.query(`
+        SELECT cr.*, e.name as employee_name, e.phone as employee_phone
+        FROM cab_requests cr
+        LEFT JOIN users e ON cr.employee_id = e.id
+        WHERE cr.${schema.assignmentColumn} = @cab_id
+          AND cr.status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS')
+          ${dateFilter}
+        ORDER BY cr.${timeCol} ASC
+      `);
+
+      return result.recordset.map((row) => this.normalizeRecord(row));
+    } catch (error) {
+      logger.error('Error getting assigned requests for cab:', error);
+      return [];
+    }
+  }
+
+  static async getUpcomingRoutesForAutoAssign(windowMinutes = 30) {
+    try {
+      const pool = getPool();
+      const schema = await this.getCabRequestSchema();
+      const timeCol = schema.requestTimeColumn || 'created_at';
+      const result = await pool.request()
+        .input('window_minutes', sql.Int, windowMinutes)
+        .query(`
+          SELECT DISTINCT route_id
+          FROM cab_requests
+          WHERE route_id IS NOT NULL
+            AND status = 'PENDING'
+            AND ${timeCol} IS NOT NULL
+            AND ${timeCol} >= GETDATE()
+            AND ${timeCol} <= DATEADD(MINUTE, @window_minutes, GETDATE())
+        `);
+      return result.recordset.map((row) => row.route_id);
+    } catch (error) {
+      logger.error('Error fetching upcoming routes for auto-assignment:', error);
+      return [];
+    }
+  }
+
+  static async cancelUpcomingForNoShow(employeeId, sourceRequestId, daysAhead = 1) {
+    try {
+      const pool = getPool();
+      const schema = await this.getCabRequestSchema();
+      const timeCol = schema.requestTimeColumn || 'created_at';
+      const request = pool.request();
+
+      bindFlexibleId(request, 'employee_id', employeeId);
+      bindFlexibleId(request, 'source_id', sourceRequestId);
+      request.input('days_ahead', sql.Int, daysAhead);
+
+      const result = await request.query(`
+        UPDATE cab_requests
+        SET status = 'CANCELLED'
+            ${schema.hasColumn('updated_at') ? ', updated_at = GETDATE()' : ''}
+        OUTPUT INSERTED.id
+        WHERE employee_id = @employee_id
+          AND id <> @source_id
+          AND status IN ('PENDING', 'APPROVED')
+          AND ${timeCol} IS NOT NULL
+          AND ${timeCol} >= GETDATE()
+          AND ${timeCol} < DATEADD(DAY, @days_ahead + 1, CAST(GETDATE() AS DATE))
+      `);
+
+      return result.recordset.map((row) => row.id);
+    } catch (error) {
+      logger.error('Error cancelling upcoming requests after no-show:', error);
+      return [];
+    }
+  }
+
+  static async hasActiveTripsForCab(cabId) {
+    try {
+      const schema = await this.getCabRequestSchema();
+      if (!schema.assignmentColumn) return false;
+
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'cab_id', cabId);
+      const result = await request.query(`
+        SELECT COUNT(*) AS active_count
+        FROM cab_requests
+        WHERE ${schema.assignmentColumn} = @cab_id
+          AND status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS')
+      `);
+      return (result.recordset[0]?.active_count || 0) > 0;
+    } catch (error) {
+      logger.error('Error checking active trips for cab:', error);
+      return false;
+    }
+  }
+
+  static async findConflictingRequest(employeeId, requestedTime, excludeRequestId = null, windowMinutes = 180) {
+    try {
+      const parsed = this.parseDateOrNull(requestedTime);
+      if (!parsed) return null;
+
+      const schema = await this.getCabRequestSchema();
+      const timeCol = schema.requestTimeColumn || 'created_at';
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'employee_id', employeeId);
+      request.input('requested_time', sql.DateTime, parsed);
+      request.input('window_minutes', sql.Int, windowMinutes);
+
+      let excludeClause = '';
+      if (excludeRequestId !== null && excludeRequestId !== undefined) {
+        bindFlexibleId(request, 'exclude_id', excludeRequestId);
+        excludeClause = 'AND id <> @exclude_id';
+      }
+
+      const result = await request.query(`
+        SELECT TOP 1 *
+        FROM cab_requests
+        WHERE employee_id = @employee_id
+          ${excludeClause}
+          AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS')
+          AND ${timeCol} IS NOT NULL
+          AND ABS(DATEDIFF(MINUTE, ${timeCol}, @requested_time)) < @window_minutes
+        ORDER BY ABS(DATEDIFF(MINUTE, ${timeCol}, @requested_time))
+      `);
+
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('Error checking conflicting request:', error);
+      return null;
     }
   }
 }

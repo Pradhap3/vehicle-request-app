@@ -167,6 +167,7 @@ export const requestAPI = {
   markBoarded: (id, data) => api.post(`/requests/${id}/board`, data),
   markDropped: (id, data) => api.post(`/requests/${id}/drop`, data),
   markNoShow: (id) => api.post(`/requests/${id}/no-show`),
+  logCallAttempt: (id, data) => api.post(`/requests/${id}/call-attempt`, data),
   getTodayStats: () => api.get('/requests/stats'),
   getMyRequests: () => api.get('/requests', { params: { my_requests: true } })
 };

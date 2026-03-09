@@ -4,12 +4,58 @@ const bcrypt = require('bcryptjs');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
-// Helper to determine SQL type for ID
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Helper to determine SQL type for ID across DB variants (INT or UNIQUEIDENTIFIER)
 const getIdInput = (request, paramName, id) => {
-  request.input(paramName, sql.NVarChar(255), id);
+  if (id === null || id === undefined) {
+    request.input(paramName, sql.NVarChar(255), null);
+    return;
+  }
+
+  if (typeof id === 'number' && Number.isInteger(id)) {
+    request.input(paramName, sql.Int, id);
+    return;
+  }
+
+  const normalized = String(id).trim();
+  if (/^\d+$/.test(normalized)) {
+    request.input(paramName, sql.Int, parseInt(normalized, 10));
+    return;
+  }
+  if (UUID_REGEX.test(normalized)) {
+    request.input(paramName, sql.UniqueIdentifier, normalized);
+    return;
+  }
+
+  request.input(paramName, sql.NVarChar(255), normalized);
 };
 
 class User {
+  static usersSchemaCache = null;
+
+  static async getUsersSchema() {
+    if (this.usersSchemaCache) return this.usersSchemaCache;
+
+    const pool = getPool();
+    const result = await pool.request().query(`
+      SELECT
+        c.name AS column_name,
+        CASE WHEN ic.column_id IS NULL THEN 0 ELSE 1 END AS is_identity
+      FROM sys.columns c
+      LEFT JOIN sys.identity_columns ic
+        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+      WHERE c.object_id = OBJECT_ID('users')
+    `);
+
+    const idMeta = result.recordset.find((row) => String(row.column_name).toLowerCase() === 'id');
+    this.usersSchemaCache = {
+      idIsIdentity: Boolean(idMeta && idMeta.is_identity === 1)
+    };
+
+    return this.usersSchemaCache;
+  }
+
   static async findAll() {
     try {
       const pool = getPool();
@@ -86,11 +132,10 @@ class User {
   static async create(userData) {
     try {
       const pool = getPool();
+      const schema = await this.getUsersSchema();
       const hashedPassword = await bcrypt.hash(userData.password, 12);
       const newId = uuidv4().toUpperCase();
-      
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), newId)
+      const request = pool.request()
         .input('employee_id', sql.NVarChar(50), userData.employee_id)
         .input('name', sql.NVarChar(255), userData.name)
         .input('email', sql.NVarChar(255), userData.email)
@@ -98,11 +143,21 @@ class User {
         .input('department', sql.NVarChar(100), userData.department)
         .input('role', sql.NVarChar(50), userData.role || 'EMPLOYEE')
         .input('password_hash', sql.NVarChar(255), hashedPassword)
-        .input('is_active', sql.Bit, 1)
-        .query(`
-          INSERT INTO users (id, employee_id, name, email, phone, department, role, password_hash, is_active, created_at, updated_at)
+        .input('is_active', sql.Bit, 1);
+
+      const columns = ['employee_id', 'name', 'email', 'phone', 'department', 'role', 'password_hash', 'is_active', 'created_at', 'updated_at'];
+      const values = ['@employee_id', '@name', '@email', '@phone', '@department', '@role', '@password_hash', '@is_active', 'GETDATE()', 'GETDATE()'];
+
+      if (!schema.idIsIdentity) {
+        request.input('id', sql.NVarChar(255), newId);
+        columns.unshift('id');
+        values.unshift('@id');
+      }
+
+      const result = await request.query(`
+          INSERT INTO users (${columns.join(', ')})
           OUTPUT INSERTED.id, INSERTED.employee_id, INSERTED.name, INSERTED.email, INSERTED.department, INSERTED.role, INSERTED.is_active
-          VALUES (@id, @employee_id, @name, @email, @phone, @department, @role, @password_hash, @is_active, GETDATE(), GETDATE())
+          VALUES (${values.join(', ')})
         `);
       
       logger.info(`User created: ${userData.email}`);

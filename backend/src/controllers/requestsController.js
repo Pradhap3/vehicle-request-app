@@ -4,7 +4,30 @@ const CabRequest = require('../models/CabRequest');
 const BoardingStatus = require('../models/BoardingStatus');
 const Notification = require('../models/Notification');
 const SmartAllocationService = require('../ai/SmartAllocationService');
+const Cab = require('../models/Cab');
+const AuditLog = require('../models/AuditLog');
 const logger = require('../utils/logger');
+
+const BOOKING_MIN_ADVANCE_MINUTES = parseInt(process.env.BOOKING_MIN_ADVANCE_MINUTES || '60', 10);
+const REQUEST_CONFLICT_WINDOW_MINUTES = parseInt(process.env.REQUEST_CONFLICT_WINDOW_MINUTES || '180', 10);
+const REQUIRE_CALL_ATTEMPT_FOR_NO_SHOW = String(process.env.REQUIRE_CALL_ATTEMPT_FOR_NO_SHOW || 'true') === 'true';
+const CALL_ATTEMPT_WINDOW_MINUTES = parseInt(process.env.CALL_ATTEMPT_WINDOW_MINUTES || '15', 10);
+const BOARDING_ALLOWED_STATUSES = new Set([
+  'APPROVED',
+  'ASSIGNED',
+  'ALLOCATED',
+  'SCHEDULED',
+  'CONFIRMED',
+  'READY_FOR_PICKUP',
+  'ON_THE_WAY',
+  'ENROUTE'
+]);
+
+const normalizeStatus = (status) =>
+  String(status || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
 
 const parseFlexibleDateTime = (value) => {
   if (!value) return null;
@@ -49,6 +72,42 @@ const combinePickupDateTime = (pickupDate, pickupTime) => {
   }
 
   return parseFlexibleDateTime(pickupTime) || parseFlexibleDateTime(pickupDate);
+};
+
+const validateBookingLeadTime = (requestedDate) => {
+  if (!requestedDate) return null;
+  const now = new Date();
+  const minAllowed = new Date(now.getTime() + BOOKING_MIN_ADVANCE_MINUTES * 60000);
+  if (requestedDate < minAllowed) {
+    return `Cab must be booked at least ${BOOKING_MIN_ADVANCE_MINUTES} minutes in advance.`;
+  }
+  return null;
+};
+
+const getClientIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.connection?.remoteAddress || null;
+};
+
+const emitNotification = async (req, userId, payload) => {
+  const created = await Notification.create({
+    user_id: userId,
+    type: payload.type || 'INFO',
+    title: payload.title || 'Notification',
+    message: payload.message || '',
+    data: payload.data || null
+  });
+  if (req.io && userId !== null && userId !== undefined) {
+    req.io.to(`user_${userId}`).emit('notification', {
+      id: created?.id,
+      ...payload,
+      created_at: new Date().toISOString()
+    });
+  }
+  return created;
 };
 
 // Get all requests
@@ -142,15 +201,67 @@ exports.createRequest = async (req, res) => {
       boarding_area,
       dropping_area
     } = req.body;
-    const normalizedRequestedTime =
+    // Use route standard pickup time as fallback if explicit time not provided.
+    let route = null;
+    if (route_id) {
+      try {
+        const Route = require('../models/Route');
+        route = await Route.findById(route_id);
+      } catch (routeErr) {
+        logger.warn(`Route lookup failed for ${route_id}: ${routeErr.message}`);
+      }
+    }
+
+    let normalizedRequestedTime =
       parseFlexibleDateTime(requested_time) ||
       combinePickupDateTime(pickup_date, pickup_time) ||
       parseFlexibleDateTime(pickup_time);
+
+    if (!normalizedRequestedTime && route?.standard_pickup_time) {
+      const hhmmss = String(route.standard_pickup_time);
+      const [hh = '08', mm = '00', ss = '00'] = hhmmss.split(':');
+      const now = new Date();
+      const candidate = new Date(now);
+      candidate.setHours(parseInt(hh, 10), parseInt(mm, 10), parseInt(ss, 10), 0);
+      const minAllowed = new Date(now.getTime() + BOOKING_MIN_ADVANCE_MINUTES * 60000);
+      if (candidate < minAllowed) candidate.setDate(candidate.getDate() + 1);
+      normalizedRequestedTime = candidate;
+    }
 
     if ((requested_time || pickup_time || pickup_date) && !normalizedRequestedTime) {
       return res.status(400).json({
         success: false,
         error: 'Invalid requested time. Use ISO datetime or pickup_date + pickup_time.'
+      });
+    }
+    if (!normalizedRequestedTime) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pickup/requested time is required.'
+      });
+    }
+
+    const leadTimeError = validateBookingLeadTime(normalizedRequestedTime);
+    if (leadTimeError) {
+      return res.status(400).json({
+        success: false,
+        error: leadTimeError
+      });
+    }
+
+    // Use current user as employee
+    const employee_id = req.user.id;
+
+    const conflict = await CabRequest.findConflictingRequest(
+      employee_id,
+      normalizedRequestedTime,
+      null,
+      REQUEST_CONFLICT_WINDOW_MINUTES
+    );
+    if (conflict) {
+      return res.status(400).json({
+        success: false,
+        error: `You already have another active booking near this time (${REQUEST_CONFLICT_WINDOW_MINUTES} minute window).`
       });
     }
 
@@ -165,9 +276,6 @@ exports.createRequest = async (req, res) => {
         error: 'Invalid travel time. Use ISO datetime.'
       });
     }
-
-    // Use current user as employee
-    const employee_id = req.user.id;
 
     // Create request with ONLY the fields that exist in DB
     const request = await CabRequest.create({
@@ -184,17 +292,12 @@ exports.createRequest = async (req, res) => {
       dropping_area: dropping_area || drop_location || null
     });
 
-    // Try to create notification (may fail if notifications table is different)
-    try {
-      await Notification.create({
-        user_id: employee_id,
-        type: 'REQUEST_CREATED',
-        title: 'Cab Request Created',
-        message: 'Your cab request has been submitted and is pending approval.'
-      });
-    } catch (notifError) {
-      logger.warn('Failed to create notification:', notifError.message);
-    }
+    await emitNotification(req, employee_id, {
+      type: 'REQUEST_CREATED',
+      title: 'Cab Request Created',
+      message: 'Your cab request has been submitted and is pending approval.',
+      data: { request_id: request.id, route_id: request.route_id, route: '/requests' }
+    });
 
     logger.info(`Cab request created: ${request.id}`);
 
@@ -270,6 +373,31 @@ exports.updateRequest = async (req, res) => {
         success: false,
         error: 'Invalid requested time. Use ISO datetime or pickup_date + pickup_time.'
       });
+    }
+
+    if (normalizedRequestedTime instanceof Date) {
+      const leadTimeError = validateBookingLeadTime(normalizedRequestedTime);
+      if (leadTimeError) {
+        return res.status(400).json({
+          success: false,
+          error: leadTimeError
+        });
+      }
+    }
+
+    if (normalizedRequestedTime instanceof Date) {
+      const conflict = await CabRequest.findConflictingRequest(
+        existingRequest.employee_id,
+        normalizedRequestedTime,
+        req.params.id,
+        REQUEST_CONFLICT_WINDOW_MINUTES
+      );
+      if (conflict) {
+        return res.status(400).json({
+          success: false,
+          error: `Another active booking exists near this time (${REQUEST_CONFLICT_WINDOW_MINUTES} minute window).`
+        });
+      }
     }
 
     const normalizedTravelTime =
@@ -369,6 +497,27 @@ exports.assignCab = async (req, res) => {
 
     // Get full request details
     const fullRequest = await CabRequest.findById(req.params.id);
+    const employeeId = fullRequest?.employee_id || request.employee_id;
+    await emitNotification(req, employeeId, {
+      type: 'CAB_ASSIGNED',
+      title: 'Cab Assigned',
+      message: 'Your cab has been assigned. Please check trip details.',
+      data: { request_id: req.params.id, route: '/requests' }
+    });
+
+    try {
+      const cab = await Cab.findById(cab_id);
+      if (cab?.driver_id) {
+        await emitNotification(req, cab.driver_id, {
+          type: 'DRIVER_ASSIGNMENT',
+          title: 'New Passenger Assigned',
+          message: 'A passenger has been assigned to your cab route.',
+          data: { request_id: req.params.id, route: '/driver' }
+        });
+      }
+    } catch (notifyDriverErr) {
+      logger.warn(`Driver assignment notification failed: ${notifyDriverErr.message}`);
+    }
 
     res.json({
       success: true,
@@ -435,9 +584,24 @@ exports.markBoarded = async (req, res) => {
         error: 'Request not found'
       });
     }
+    if (!BOARDING_ALLOWED_STATUSES.has(normalizeStatus(request.status))) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot board request in ${request.status} status`
+      });
+    }
 
     // Update request status
     await CabRequest.update(req.params.id, { status: 'IN_PROGRESS' });
+
+    const assignedCabId = request.assigned_cab_id ?? request.cab_id ?? null;
+    if (assignedCabId) {
+      try {
+        await Cab.updateStatus(assignedCabId, 'ON_TRIP');
+      } catch (cabError) {
+        logger.warn(`Failed to set cab ON_TRIP for ${assignedCabId}: ${cabError.message}`);
+      }
+    }
 
     // Try to update boarding status
     try {
@@ -445,6 +609,13 @@ exports.markBoarded = async (req, res) => {
     } catch (err) {
       logger.warn('BoardingStatus update failed:', err.message);
     }
+
+    await emitNotification(req, request.employee_id, {
+      type: 'PASSENGER_BOARDED',
+      title: 'Boarded',
+      message: 'You have been marked as boarded. Trip is in progress.',
+      data: { request_id: req.params.id, route: '/requests' }
+    });
 
     res.json({
       success: true,
@@ -471,6 +642,12 @@ exports.markDropped = async (req, res) => {
         error: 'Request not found'
       });
     }
+    if (request.status !== 'IN_PROGRESS') {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot drop request in ${request.status} status`
+      });
+    }
 
     // Update request status
     await CabRequest.update(req.params.id, { status: 'COMPLETED' });
@@ -481,6 +658,25 @@ exports.markDropped = async (req, res) => {
     } catch (err) {
       logger.warn('BoardingStatus update failed:', err.message);
     }
+
+    const assignedCabId = request.assigned_cab_id ?? request.cab_id ?? null;
+    if (assignedCabId) {
+      try {
+        const hasActive = await CabRequest.hasActiveTripsForCab(assignedCabId);
+        if (!hasActive) {
+          await Cab.updateStatus(assignedCabId, 'AVAILABLE');
+        }
+      } catch (cabError) {
+        logger.warn(`Failed to refresh cab status for ${assignedCabId}: ${cabError.message}`);
+      }
+    }
+
+    await emitNotification(req, request.employee_id, {
+      type: 'PASSENGER_DROPPED',
+      title: 'Dropped',
+      message: 'You have been marked as dropped. Trip is completed.',
+      data: { request_id: req.params.id, route: '/requests' }
+    });
 
     res.json({
       success: true,
@@ -505,6 +701,22 @@ exports.markNoShow = async (req, res) => {
         error: 'Request not found'
       });
     }
+    if (!BOARDING_ALLOWED_STATUSES.has(normalizeStatus(request.status))) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot mark no-show for request in ${request.status} status`
+      });
+    }
+
+    if (REQUIRE_CALL_ATTEMPT_FOR_NO_SHOW) {
+      const recentCall = await AuditLog.getRecentCallAttempt(req.params.id, CALL_ATTEMPT_WINDOW_MINUTES);
+      if (!recentCall) {
+        return res.status(400).json({
+          success: false,
+          error: `Log a passenger call attempt within the last ${CALL_ATTEMPT_WINDOW_MINUTES} minutes before marking no-show.`
+        });
+      }
+    }
 
     // Update request status
     await CabRequest.update(req.params.id, { status: 'NO_SHOW' });
@@ -516,15 +728,106 @@ exports.markNoShow = async (req, res) => {
       logger.warn('BoardingStatus update failed:', err.message);
     }
 
+    const cancelledUpcomingIds = await CabRequest.cancelUpcomingForNoShow(
+      request.employee_id,
+      req.params.id,
+      1
+    );
+
+    let reassignedCount = 0;
+    if (request.route_id) {
+      const baseDate = new Date(request.requested_time || request.pickup_time || new Date());
+      const reassignDate = Number.isNaN(baseDate.getTime())
+        ? new Date().toISOString().split('T')[0]
+        : baseDate.toISOString().split('T')[0];
+      const reassignResult = await SmartAllocationService.reassignWaitingPassengers(
+        request.route_id,
+        reassignDate
+      );
+      reassignedCount = reassignResult?.reassigned?.length || 0;
+    }
+
+    const assignedCabId = request.assigned_cab_id ?? request.cab_id ?? null;
+    if (assignedCabId) {
+      try {
+        const hasActive = await CabRequest.hasActiveTripsForCab(assignedCabId);
+        if (!hasActive) {
+          await Cab.updateStatus(assignedCabId, 'AVAILABLE');
+        }
+      } catch (cabError) {
+        logger.warn(`Failed to refresh cab status after no-show for ${assignedCabId}: ${cabError.message}`);
+      }
+    }
+
+    await emitNotification(req, request.employee_id, {
+      type: 'PASSENGER_NO_SHOW',
+      title: 'Marked as No-Show',
+      message: 'You were marked as no-show. Upcoming trips may be cancelled automatically.',
+      data: { request_id: req.params.id, route: '/requests' }
+    });
+
     res.json({
       success: true,
-      message: 'Passenger marked as no-show'
+      message: 'Passenger marked as no-show',
+      data: {
+        cancelledUpcomingCount: cancelledUpcomingIds.length,
+        reassignedCount
+      }
     });
   } catch (error) {
     logger.error('Mark no-show error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to mark as no-show'
+    });
+  }
+};
+
+// Log driver call attempt before no-show
+exports.logCallAttempt = async (req, res) => {
+  try {
+    const { call_status, notes } = req.body;
+
+    const request = await CabRequest.findById(req.params.id);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+
+    if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(request.status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot log call attempt for request in ${request.status} status`
+      });
+    }
+
+    await AuditLog.create({
+      user_id: req.user?.id || null,
+      action: 'PASSENGER_CALL_ATTEMPT',
+      entity_type: 'cab_request',
+      entity_id: request.id,
+      changes: {
+        request_id: request.id,
+        employee_id: request.employee_id,
+        call_status: call_status || 'ATTEMPTED',
+        notes: notes || null,
+        logged_at: new Date().toISOString()
+      },
+      ip_address: getClientIp(req),
+      user_agent: req.headers['user-agent'] || null
+    });
+
+    res.json({
+      success: true,
+      message: 'Call attempt logged'
+    });
+  } catch (error) {
+    logger.error('Log call attempt error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to log call attempt'
     });
   }
 };

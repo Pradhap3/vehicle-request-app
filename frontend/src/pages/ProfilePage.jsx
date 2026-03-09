@@ -4,10 +4,12 @@ import {
   Save, Loader2, Eye, EyeOff, CheckCircle, AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { authAPI } from '../services/api';
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
+  const { t } = useLanguage();
   const { user, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   
@@ -168,7 +170,7 @@ export default function ProfilePage() {
               }`}
             >
               <User className="w-4 h-4 inline mr-2" />
-              Profile Information
+              {t('profile_info')}
             </button>
             <button
               onClick={() => setActiveTab('password')}
@@ -179,7 +181,7 @@ export default function ProfilePage() {
               }`}
             >
               <Key className="w-4 h-4 inline mr-2" />
-              Change Password
+              {t('profile_change_password')}
             </button>
           </nav>
         </div>

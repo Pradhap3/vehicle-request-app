@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { routeAPI, cabAPI, userAPI } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   Plus, 
   Search, 
@@ -323,6 +324,7 @@ const AutoAllocateModal = ({ isOpen, onClose, route, onAllocate }) => {
 };
 
 const RoutesPage = () => {
+  const { t } = useLanguage();
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -398,15 +400,15 @@ const RoutesPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Routes ({routes.length})</h1>
-          <p className="text-gray-500">Manage transportation routes</p>
+          <h1 className="text-2xl font-bold text-gray-800">{t('nav_routes')} ({routes.length})</h1>
+          <p className="text-gray-500">{t('routes_manage_desc')}</p>
         </div>
         <button
           onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
         >
           <Plus size={20} />
-          Create Route
+          {t('routes_create')}
         </button>
       </div>
 
@@ -417,7 +419,7 @@ const RoutesPage = () => {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search routes..."
+          placeholder={t('search_routes')}
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
         />
       </div>
@@ -431,13 +433,13 @@ const RoutesPage = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <Route size={48} className="mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-800 mb-2">No routes found</h3>
-          <p className="text-gray-500 mb-4">Create your first route to get started</p>
+          <p className="text-gray-500 mb-4">{t('routes_empty_desc')}</p>
           <button
             onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
           >
             <Plus size={18} />
-            Create Route
+            {t('routes_create')}
           </button>
         </div>
       ) : (
@@ -514,7 +516,7 @@ const RoutesPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }}
-        title={selectedRoute ? 'Edit Route' : 'Create New Route'}
+        title={selectedRoute ? t('routes_edit') : t('routes_create_new')}
       >
         <RouteForm
           route={selectedRoute}

@@ -6,17 +6,19 @@ import {
 } from 'lucide-react';
 import { requestAPI, notificationAPI, cabAPI } from '../services/api';
 import { useSocket } from '../context/SocketContext';
+import { useLanguage } from '../context/LanguageContext';
 import toast from 'react-hot-toast';
 import { format, isToday, isTomorrow, parseISO } from 'date-fns';
 
 export default function EmployeeDashboardPage() {
+  const { t } = useLanguage();
   const [myRequests, setMyRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [todayTrip, setTodayTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const { socket, isConnected } = useSocket();
+  const { socket, connected } = useSocket();
 
   // New request form
   const [requestForm, setRequestForm] = useState({
@@ -103,7 +105,7 @@ export default function EmployeeDashboardPage() {
       });
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to submit request');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to submit request');
     } finally {
       setSubmitting(false);
     }
@@ -116,7 +118,7 @@ export default function EmployeeDashboardPage() {
       toast.success('Request cancelled');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to cancel request');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to cancel request');
     }
   };
 
@@ -167,8 +169,8 @@ export default function EmployeeDashboardPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Dashboard</h1>
-          <p className="text-gray-600">Manage your cab requests and track your trips</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('nav_my_dashboard')}</h1>
+          <p className="text-gray-600">{t('employee_manage_desc')}</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -176,22 +178,22 @@ export default function EmployeeDashboardPage() {
             className="btn-secondary flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
-            Refresh
+            {t('dash_refresh')}
           </button>
           <button
             onClick={() => setShowRequestModal(true)}
             className="btn-primary flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            New Request
+            {t('requests_new')}
           </button>
         </div>
       </div>
 
       {/* Connection Status */}
-      <div className={`flex items-center gap-2 text-sm ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-        <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-        {isConnected ? 'Connected - Real-time updates active' : 'Disconnected - Reconnecting...'}
+      <div className={`flex items-center gap-2 text-sm ${connected ? 'text-green-600' : 'text-red-600'}`}>
+        <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+        {connected ? t('employee_connected_realtime') : t('employee_disconnected_reconnecting')}
       </div>
 
       {/* Today's Trip Card */}
@@ -199,11 +201,11 @@ export default function EmployeeDashboardPage() {
         <div className="bg-gradient-to-r from-primary to-primary/80 text-white rounded-xl p-6 shadow-lg">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-lg font-semibold mb-2">Today's Trip</h2>
+              <h2 className="text-lg font-semibold mb-2">{t('employee_todays_trip')}</h2>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  <span>Pickup at {todayTrip.pickup_time}</span>
+                  <span>{t('employee_pickup_at')} {todayTrip.pickup_time}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
@@ -211,7 +213,7 @@ export default function EmployeeDashboardPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Navigation className="w-4 h-4" />
-                  <span>To: {todayTrip.drop_location}</span>
+                  <span>{t('employee_to')}: {todayTrip.drop_location}</span>
                 </div>
               </div>
             </div>
@@ -247,7 +249,8 @@ export default function EmployeeDashboardPage() {
               <Calendar className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Total Requests</p>
+                <p className="text-sm text-gray-600">{t('dash_total_requests')}</p>
+
               <p className="text-2xl font-bold">{myRequests.length}</p>
             </div>
           </div>
@@ -258,7 +261,7 @@ export default function EmployeeDashboardPage() {
               <Clock className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Pending</p>
+                <p className="text-sm text-gray-600">{t('dash_pending')}</p>
               <p className="text-2xl font-bold">
                 {myRequests.filter(r => r.status === 'PENDING').length}
               </p>
@@ -271,7 +274,7 @@ export default function EmployeeDashboardPage() {
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Approved</p>
+                <p className="text-sm text-gray-600">{t('requests_approved')}</p>
               <p className="text-2xl font-bold">
                 {myRequests.filter(r => r.status === 'APPROVED').length}
               </p>
@@ -284,7 +287,7 @@ export default function EmployeeDashboardPage() {
               <Bell className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Unread Notifications</p>
+                <p className="text-sm text-gray-600">{t('notifications_unread')}</p>
               <p className="text-2xl font-bold">
                 {notifications.filter(n => !n.is_read).length}
               </p>
@@ -297,18 +300,18 @@ export default function EmployeeDashboardPage() {
         {/* My Requests */}
         <div className="lg:col-span-2 card">
           <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">My Requests</h2>
+            <h2 className="text-lg font-semibold">{t('employee_my_requests')}</h2>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
             {myRequests.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Car className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No requests yet</p>
+                <p>{t('employee_no_requests')}</p>
                 <button
                   onClick={() => setShowRequestModal(true)}
                   className="text-primary hover:underline mt-2"
                 >
-                  Create your first request
+                  {t('employee_create_first_request')}
                 </button>
               </div>
             ) : (
@@ -320,7 +323,7 @@ export default function EmployeeDashboardPage() {
                         <span className="font-medium">
                           {formatDate(request.pickup_date)}
                         </span>
-                        <span className="text-gray-500">at {request.pickup_time}</span>
+                        <span className="text-gray-500">{t('employee_at')} {request.pickup_time}</span>
                         {getStatusBadge(request.status)}
                       </div>
                       <div className="text-sm text-gray-600 flex items-center gap-1">
@@ -330,7 +333,7 @@ export default function EmployeeDashboardPage() {
                       {request.cab_number && (
                         <div className="text-sm text-green-600 flex items-center gap-1">
                           <Car className="w-3 h-3" />
-                          Assigned: {request.cab_number}
+                          {t('employee_assigned')}: {request.cab_number}
                           {request.driver_name && ` (${request.driver_name})`}
                         </div>
                       )}
@@ -340,7 +343,7 @@ export default function EmployeeDashboardPage() {
                         onClick={() => handleCancelRequest(request.id)}
                         className="text-red-600 hover:text-red-700 text-sm"
                       >
-                        Cancel
+                        {t('employee_cancel')}
                       </button>
                     )}
                   </div>
@@ -353,13 +356,13 @@ export default function EmployeeDashboardPage() {
         {/* Notifications */}
         <div className="card">
           <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Notifications</h2>
+            <h2 className="text-lg font-semibold">{t('employee_notifications_title')}</h2>
           </div>
           <div className="divide-y max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-gray-500">
                 <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No notifications</p>
+                <p>{t('employee_no_notifications')}</p>
               </div>
             ) : (
               notifications.slice(0, 10).map(notification => (
@@ -411,7 +414,7 @@ export default function EmployeeDashboardPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-lg font-semibold">New Cab Request</h2>
+              <h2 className="text-lg font-semibold">{t('employee_new_cab_request')}</h2>
               <button 
                 onClick={() => setShowRequestModal(false)}
                 className="text-gray-500 hover:text-gray-700"
@@ -423,7 +426,7 @@ export default function EmployeeDashboardPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Pickup Date *
+                    {t('employee_pickup_date')} *
                   </label>
                   <input
                     type="date"
@@ -436,7 +439,7 @@ export default function EmployeeDashboardPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Pickup Time *
+                    {t('employee_pickup_time')} *
                   </label>
                   <input
                     type="time"
@@ -449,12 +452,12 @@ export default function EmployeeDashboardPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pickup Location *
+                  {t('employee_pickup_location')} *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Enter pickup address"
+                  placeholder={t('employee_enter_pickup')}
                   value={requestForm.pickup_location}
                   onChange={(e) => setRequestForm({...requestForm, pickup_location: e.target.value})}
                   className="input"
@@ -462,12 +465,12 @@ export default function EmployeeDashboardPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Drop Location *
+                  {t('employee_drop_location')} *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Enter drop address"
+                  placeholder={t('employee_enter_drop')}
                   value={requestForm.drop_location}
                   onChange={(e) => setRequestForm({...requestForm, drop_location: e.target.value})}
                   className="input"
@@ -475,11 +478,11 @@ export default function EmployeeDashboardPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes (Optional)
+                  {t('employee_notes_optional')}
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Any special instructions..."
+                  placeholder={t('employee_special_instructions')}
                   value={requestForm.notes}
                   onChange={(e) => setRequestForm({...requestForm, notes: e.target.value})}
                   className="input"
@@ -491,7 +494,7 @@ export default function EmployeeDashboardPage() {
                   onClick={() => setShowRequestModal(false)}
                   className="btn-secondary flex-1"
                 >
-                  Cancel
+                  {t('employee_cancel')}
                 </button>
                 <button
                   type="submit"
@@ -501,10 +504,10 @@ export default function EmployeeDashboardPage() {
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Submitting...
+                      {t('employee_submitting')}
                     </>
                   ) : (
-                    'Submit Request'
+                    t('employee_submit_request')
                   )}
                 </button>
               </div>

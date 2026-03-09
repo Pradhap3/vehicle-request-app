@@ -284,6 +284,12 @@ router.post('/requests/:id/no-show',
   requestsController.markNoShow
 );
 
+router.post('/requests/:id/call-attempt',
+  authenticate,
+  authorize('CAB_DRIVER', 'HR_ADMIN', 'ADMIN'),
+  requestsController.logCallAttempt
+);
+
 // ==================== NOTIFICATION ROUTES ====================
 router.get('/notifications', 
   authenticate, 

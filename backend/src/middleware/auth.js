@@ -2,6 +2,18 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const User = require('../models/User');
+const { connectDB } = require('../config/database');
+
+const isDatabaseUnavailableError = (error) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('database not connected') ||
+    msg.includes('cannot open server') ||
+    msg.includes('econn') ||
+    msg.includes('elogin') ||
+    msg.includes('esocket')
+  );
+};
 
 const authenticate = async (req, res, next) => {
   try {
@@ -18,6 +30,7 @@ const authenticate = async (req, res, next) => {
     
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      await connectDB();
       
       // Get fresh user data
       const user = await User.findById(decoded.id);
@@ -43,6 +56,12 @@ const authenticate = async (req, res, next) => {
     }
   } catch (error) {
     logger.error('Authentication error:', error);
+    if (isDatabaseUnavailableError(error)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Database temporarily unavailable. Please retry in a few minutes.'
+      });
+    }
     return res.status(401).json({
       success: false,
       error: 'Invalid token'
@@ -77,6 +96,7 @@ const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      await connectDB();
       const user = await User.findById(decoded.id);
       if (user && user.is_active) {
         req.user = user;

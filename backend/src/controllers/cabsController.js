@@ -305,6 +305,7 @@ exports.getDriverDashboard = async (req, res) => {
       data: {
         cab,
         assignments,
+        passengers: assignments,
         locationEnabled: !!(cab.current_latitude && cab.current_longitude)
       }
     });

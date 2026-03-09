@@ -3,7 +3,54 @@ const { sql, getPool } = require('../config/database');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const bindFlexibleId = (request, paramName, id) => {
+  if (id === null || id === undefined) {
+    request.input(paramName, sql.NVarChar(255), null);
+    return;
+  }
+  if (typeof id === 'number' && Number.isInteger(id)) {
+    request.input(paramName, sql.Int, id);
+    return;
+  }
+  const normalized = String(id).trim();
+  if (/^\d+$/.test(normalized)) {
+    request.input(paramName, sql.Int, parseInt(normalized, 10));
+    return;
+  }
+  if (UUID_REGEX.test(normalized)) {
+    request.input(paramName, sql.UniqueIdentifier, normalized);
+    return;
+  }
+  request.input(paramName, sql.NVarChar(255), normalized);
+};
+
 class Cab {
+  static cabsSchemaCache = null;
+
+  static async getCabsSchema() {
+    if (this.cabsSchemaCache) return this.cabsSchemaCache;
+
+    const pool = getPool();
+    const result = await pool.request().query(`
+      SELECT
+        c.name AS column_name,
+        CASE WHEN ic.column_id IS NULL THEN 0 ELSE 1 END AS is_identity
+      FROM sys.columns c
+      LEFT JOIN sys.identity_columns ic
+        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+      WHERE c.object_id = OBJECT_ID('cabs')
+    `);
+
+    const idMeta = result.recordset.find((row) => String(row.column_name).toLowerCase() === 'id');
+    this.cabsSchemaCache = {
+      idIsIdentity: Boolean(idMeta && idMeta.is_identity === 1)
+    };
+
+    return this.cabsSchemaCache;
+  }
+
   static async findAll() {
     try {
       const pool = getPool();
@@ -26,8 +73,9 @@ class Cab {
   static async findById(id) {
     try {
       const pool = getPool();
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), id)
+      const request = pool.request();
+      bindFlexibleId(request, 'id', id);
+      const result = await request
         .query(`
           SELECT c.*, 
                  u.name as driver_name, u.email as driver_email, u.phone as driver_phone
@@ -45,8 +93,9 @@ class Cab {
   static async findByDriverId(driverId) {
     try {
       const pool = getPool();
-      const result = await pool.request()
-        .input('driver_id', sql.NVarChar(255), driverId)
+      const request = pool.request();
+      bindFlexibleId(request, 'driver_id', driverId);
+      const result = await request
         .query(`
           SELECT * FROM cabs WHERE driver_id = @driver_id AND is_active = 1
         `);
@@ -60,23 +109,31 @@ class Cab {
   static async create(cabData) {
     try {
       const pool = getPool();
+      const schema = await this.getCabsSchema();
       const newId = uuidv4().toUpperCase();
-      
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), newId)
+      const request = pool.request()
         .input('cab_number', sql.NVarChar(50), cabData.cab_number)
         .input('capacity', sql.Int, cabData.capacity || 4)
-        .input('driver_id', sql.NVarChar(255), cabData.driver_id || null)
         .input('status', sql.NVarChar(20), cabData.status || 'AVAILABLE')
         .input('current_latitude', sql.Float, cabData.current_latitude || null)
         .input('current_longitude', sql.Float, cabData.current_longitude || null)
-        .input('is_active', sql.Bit, 1)
+        .input('is_active', sql.Bit, 1);
+      bindFlexibleId(request, 'driver_id', cabData.driver_id || null);
+
+      const columns = ['cab_number', 'capacity', 'driver_id', 'status', 'current_latitude', 'current_longitude', 'is_active', 'created_at', 'updated_at'];
+      const values = ['@cab_number', '@capacity', '@driver_id', '@status', '@current_latitude', '@current_longitude', '@is_active', 'GETDATE()', 'GETDATE()'];
+
+      if (!schema.idIsIdentity) {
+        request.input('id', sql.NVarChar(255), newId);
+        columns.unshift('id');
+        values.unshift('@id');
+      }
+
+      const result = await request
         .query(`
-          INSERT INTO cabs (id, cab_number, capacity, driver_id, status, 
-                           current_latitude, current_longitude, is_active, created_at, updated_at)
+          INSERT INTO cabs (${columns.join(', ')})
           OUTPUT INSERTED.*
-          VALUES (@id, @cab_number, @capacity, @driver_id, @status,
-                  @current_latitude, @current_longitude, @is_active, GETDATE(), GETDATE())
+          VALUES (${values.join(', ')})
         `);
       
       logger.info(`Cab created: ${cabData.cab_number}`);
@@ -90,7 +147,8 @@ class Cab {
   static async update(id, cabData) {
     try {
       const pool = getPool();
-      const request = pool.request().input('id', sql.NVarChar(255), id);
+      const request = pool.request();
+      bindFlexibleId(request, 'id', id);
       
       const updates = [];
       
@@ -103,7 +161,7 @@ class Cab {
         updates.push('capacity = @capacity');
       }
       if (cabData.driver_id !== undefined) {
-        request.input('driver_id', sql.NVarChar(255), cabData.driver_id);
+        bindFlexibleId(request, 'driver_id', cabData.driver_id);
         updates.push('driver_id = @driver_id');
       }
       if (cabData.status) {
@@ -143,9 +201,9 @@ class Cab {
   static async delete(id) {
     try {
       const pool = getPool();
-      
-      const result = await pool.request()
-        .input('id', sql.NVarChar(255), id)
+      const request = pool.request();
+      bindFlexibleId(request, 'id', id);
+      const result = await request
         .query(`
           UPDATE cabs 
           SET is_active = 0, updated_at = GETDATE()
@@ -171,7 +229,7 @@ class Cab {
       
       // Update cab's current location
       await pool.request()
-        .input('id', sql.NVarChar(255), cabId)
+        .input('id', /^\d+$/.test(String(cabId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(cabId)) ? parseInt(String(cabId), 10) : cabId)
         .input('latitude', sql.Float, latitude)
         .input('longitude', sql.Float, longitude)
         .query(`
@@ -187,7 +245,7 @@ class Cab {
       const trackingId = uuidv4().toUpperCase();
       await pool.request()
         .input('id', sql.NVarChar(255), trackingId)
-        .input('cab_id', sql.NVarChar(255), cabId)
+        .input('cab_id', /^\d+$/.test(String(cabId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(cabId)) ? parseInt(String(cabId), 10) : cabId)
         .input('latitude', sql.Float, latitude)
         .input('longitude', sql.Float, longitude)
         .query(`
@@ -224,7 +282,7 @@ class Cab {
     try {
       const pool = getPool();
       const result = await pool.request()
-        .input('cab_id', sql.NVarChar(255), cabId)
+        .input('cab_id', /^\d+$/.test(String(cabId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(cabId)) ? parseInt(String(cabId), 10) : cabId)
         .query(`
           SELECT c.capacity - COALESCE(
             (SELECT COUNT(*) FROM cab_requests cr 
@@ -247,7 +305,7 @@ class Cab {
     try {
       const pool = getPool();
       const request = pool.request()
-        .input('cab_id', sql.NVarChar(255), cabId);
+        .input('cab_id', /^\d+$/.test(String(cabId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(cabId)) ? parseInt(String(cabId), 10) : cabId);
       
       let dateFilter = '';
       if (startDate && endDate) {

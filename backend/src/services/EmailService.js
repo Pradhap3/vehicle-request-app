@@ -1,4 +1,4 @@
-// src/services/EmailService.js
+﻿// src/services/EmailService.js
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 const Notification = require('../models/Notification');
@@ -13,6 +13,20 @@ class EmailService {
     if (this.initialized) return;
 
     try {
+      const missingConfig = ['EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USER', 'EMAIL_PASSWORD', 'EMAIL_FROM']
+        .filter((key) => !process.env[key]);
+      if (missingConfig.length > 0) {
+        if (process.env.NODE_ENV !== 'production') {
+          this.transporter = nodemailer.createTransport({
+            jsonTransport: true
+          });
+          logger.warn(`Email env vars missing (${missingConfig.join(', ')}). Using dev jsonTransport fallback.`);
+          this.initialized = true;
+          return;
+        }
+        throw new Error(`Missing email env vars: ${missingConfig.join(', ')}`);
+      }
+
       this.transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
         port: parseInt(process.env.EMAIL_PORT) || 587,
@@ -27,13 +41,16 @@ class EmailService {
         }
       });
 
-      // Verify connection
       await this.transporter.verify();
-      logger.info('✅ Email service initialized successfully');
+      logger.info('Email service initialized successfully');
       this.initialized = true;
     } catch (error) {
-      logger.warn('⚠️ Email service initialization failed:', error.message);
+      logger.warn(`Email service initialization failed: ${error.message}`);
+      if (error.code || error.responseCode) {
+        logger.warn(`Email service error code: ${error.code || error.responseCode}`);
+      }
       logger.warn('Email notifications will be disabled');
+      this.transporter = null;
       this.initialized = false;
     }
   }
@@ -92,7 +109,7 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <h1>🚗 AISIN Fleet Management</h1>
+              <h1>ðŸš— AISIN Fleet Management</h1>
             </div>
             <div class="content">
               <h2>Your Cab Request is Confirmed!</h2>
@@ -137,7 +154,7 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <h1>🚗 AISIN Fleet Management</h1>
+              <h1>ðŸš— AISIN Fleet Management</h1>
             </div>
             <div class="content">
               <h2>Cab Assigned to Your Request</h2>
@@ -165,7 +182,7 @@ class EmailService {
 
   getDelayNotificationTemplate(data) {
     return {
-      subject: `⚠️ Traffic Delay Alert - ${data.route_name}`,
+      subject: `âš ï¸ Traffic Delay Alert - ${data.route_name}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -182,7 +199,7 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <h1>⚠️ Traffic Delay Alert</h1>
+              <h1>âš ï¸ Traffic Delay Alert</h1>
             </div>
             <div class="content">
               <h2>Your cab may be delayed</h2>
@@ -223,7 +240,7 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <h1>🚗 New Trip Assignment</h1>
+              <h1>ðŸš— New Trip Assignment</h1>
             </div>
             <div class="content">
               <h2>You have a new trip assignment</h2>
@@ -236,7 +253,7 @@ class EmailService {
               </div>
               <div class="passenger-list">
                 <h3>Passenger Details</h3>
-                ${data.passengers.map(p => `<p>• ${p.name} - ${p.phone || 'No phone'}</p>`).join('')}
+                ${data.passengers.map(p => `<p>â€¢ ${p.name} - ${p.phone || 'No phone'}</p>`).join('')}
               </div>
               <p>Please ensure your location is enabled and start on time.</p>
             </div>
@@ -292,3 +309,4 @@ class EmailService {
 }
 
 module.exports = new EmailService();
+

@@ -16,14 +16,34 @@ const routes = require('./routes');
 const logger = require('./utils/logger');
 const EmailService = require('./services/EmailService');
 const SmartAllocationService = require('./ai/SmartAllocationService');
+const DelayMonitoringService = require('./services/DelayMonitoringService');
 
 const app = express();
 const server = http.createServer(app);
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+const parseAllowedOrigins = () => {
+  const configured = String(process.env.FRONTEND_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const fallback = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : ['http://localhost:3000', 'http://localhost:5173'];
+  return new Set([...(configured.length ? configured : fallback)]);
+};
+
+const allowedOrigins = parseAllowedOrigins();
+const corsOrigin = (origin, callback) => {
+  // Allow same-origin/non-browser clients.
+  if (!origin) return callback(null, true);
+  if (allowedOrigins.has(origin)) return callback(null, true);
+  return callback(new Error(`CORS blocked for origin: ${origin}`));
+};
 
 // Socket.IO setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -35,10 +55,10 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: corsOrigin,
   credentials: true
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: process.env.REQUEST_BODY_LIMIT || '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging
@@ -58,6 +78,19 @@ const limiter = rateLimit({
   }
 });
 app.use('/api/', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 min
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '20', 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    success: false,
+    error: 'Too many authentication attempts. Please try again later.'
+  }
+});
+app.use('/api/auth/login', authLimiter);
 
 // Pass io to routes
 app.use((req, res, next) => {
@@ -104,8 +137,12 @@ io.on('connection', (socket) => {
 
   // Join room based on user role
   socket.on('join_role', (role) => {
-    socket.join(role);
-    logger.info(`Socket ${socket.id} joined room: ${role}`);
+    const room = typeof role === 'string' ? role : (role && (role.room || role.role || role.name)) || 'unknown';
+    socket.join(room);
+    if (role && role.userId) {
+      socket.join(`user_${role.userId}`);
+    }
+    logger.info(`Socket ${socket.id} joined room: ${room}`);
   });
 
   // Driver location updates
@@ -128,6 +165,8 @@ io.on('connection', (socket) => {
 
 // Scheduled tasks
 const setupCronJobs = () => {
+  const autoAssignWindowMinutes = parseInt(process.env.AUTO_ASSIGN_WINDOW_MINUTES || '30', 10);
+
   // Process pending email notifications every 5 minutes
   cron.schedule('*/5 * * * *', async () => {
     try {
@@ -142,6 +181,20 @@ const setupCronJobs = () => {
 
   // Check traffic for all active routes every 10 minutes
   if (process.env.ENABLE_AI_FEATURES === 'true') {
+    // Auto-assign upcoming rides every minute for requests within assignment window.
+    cron.schedule('* * * * *', async () => {
+      try {
+        const result = await SmartAllocationService.autoAllocateUpcomingRequests(autoAssignWindowMinutes);
+        if (result.success && result.totalAllocations > 0) {
+          logger.info(
+            `Auto-assigned ${result.totalAllocations} request(s) across ${result.processedRoutes} route(s)`
+          );
+        }
+      } catch (error) {
+        logger.error('Auto assignment cron error:', error);
+      }
+    });
+
     cron.schedule('*/10 * * * *', async () => {
       try {
         const Route = require('./models/Route');
@@ -157,6 +210,18 @@ const setupCronJobs = () => {
       }
     });
   }
+
+  // Monitor cab shift delays (office entry/leave schedules) every 5 minutes
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      const result = await DelayMonitoringService.monitorCabShiftDelays({ io });
+      if (result.success && result.alerts > 0) {
+        logger.info(`Shift delay monitor raised ${result.alerts} alert(s)`);
+      }
+    } catch (error) {
+      logger.error('Shift delay monitor cron error:', error);
+    }
+  });
 
   logger.info('Cron jobs scheduled');
 };

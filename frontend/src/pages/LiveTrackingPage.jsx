@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { cabAPI } from '../services/api';
 import { useSocket } from '../context/SocketContext';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   RefreshCw, 
   Car, 
@@ -67,6 +68,7 @@ const MapUpdater = ({ center }) => {
 };
 
 const LiveTrackingPage = () => {
+  const { t } = useLanguage();
   const [cabs, setCabs] = useState([]);
   const [selectedCab, setSelectedCab] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +81,7 @@ const LiveTrackingPage = () => {
     try {
       const params = statusFilter ? { status: statusFilter } : {};
       const response = await cabAPI.getAll(params);
-      setCabs(response.data.cabs || []);
+      setCabs(response.data?.data || response.data?.cabs || []);
     } catch (error) {
       console.error('Error fetching cabs:', error);
       toast.error('Failed to load cabs');
@@ -138,7 +140,7 @@ const LiveTrackingPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Live Tracking</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{t('nav_tracking')}</h1>
           <p className="text-gray-500 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
             {connected ? 'Real-time updates active' : 'Connecting...'}
@@ -150,7 +152,7 @@ const LiveTrackingPage = () => {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white"
           >
-            <option value="">All Cabs</option>
+            <option value="">{t('tracking_all_cabs')}</option>
             <option value="AVAILABLE">Available</option>
             <option value="ON_TRIP">On Trip</option>
             <option value="OFFLINE">Offline</option>
@@ -160,7 +162,7 @@ const LiveTrackingPage = () => {
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
           >
             <RefreshCw size={18} />
-            Refresh
+            {t('dash_refresh')}
           </button>
         </div>
       </div>
@@ -228,7 +230,7 @@ const LiveTrackingPage = () => {
         {/* Cab List */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 h-[600px] overflow-y-auto">
           <h3 className="font-semibold text-gray-800 mb-4">
-            Cabs ({getCabsWithLocation().length} tracked)
+            {t('nav_cabs')} ({getCabsWithLocation().length} {t('tracking_tracked')})
           </h3>
           
           {loading ? (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { requestAPI, routeAPI, cabAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   Plus, 
   Search, 
@@ -241,6 +242,7 @@ const AssignCabModal = ({ isOpen, onClose, request, cabs, onAssign, loading }) =
 };
 
 const RequestsPage = () => {
+  const { t } = useLanguage();
   const { isAdmin, isEmployee, user } = useAuth();
   const [requests, setRequests] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -298,7 +300,7 @@ const RequestsPage = () => {
       setIsModalOpen(false);
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to submit request');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to submit request');
     } finally {
       setActionLoading(false);
     }
@@ -313,7 +315,7 @@ const RequestsPage = () => {
       setSelectedRequest(null);
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to assign cab');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to assign cab');
     } finally {
       setActionLoading(false);
     }
@@ -325,7 +327,7 @@ const RequestsPage = () => {
       toast.success('Request cancelled');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to cancel request');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to cancel request');
     }
   };
 
@@ -349,7 +351,7 @@ const RequestsPage = () => {
       }
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Action failed');
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Action failed');
     }
   };
 
@@ -375,10 +377,10 @@ const RequestsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">
-            {isEmployee ? 'My Requests' : 'Requests'} ({requests.length})
+            {isEmployee ? t('nav_my_requests') : t('nav_requests')} ({requests.length})
           </h1>
           <p className="text-gray-500">
-            {isEmployee ? 'Manage your cab requests' : 'Manage all cab requests'}
+            {isEmployee ? t('requests_manage_my_desc') : t('requests_manage_all_desc')}
           </p>
         </div>
         <button
@@ -386,7 +388,7 @@ const RequestsPage = () => {
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
         >
           <Plus size={20} />
-          New Request
+          {t('requests_new')}
         </button>
       </div>
 
@@ -398,7 +400,7 @@ const RequestsPage = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search requests..."
+            placeholder={t('search_requests')}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           />
         </div>
@@ -407,7 +409,7 @@ const RequestsPage = () => {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white"
         >
-          <option value="">All Status</option>
+          <option value="">{t('all_status')}</option>
           <option value="PENDING">Pending</option>
           <option value="APPROVED">Approved</option>
           <option value="ASSIGNED">Assigned</option>
@@ -432,13 +434,13 @@ const RequestsPage = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <ClipboardList size={48} className="mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-800 mb-2">No requests found</h3>
-          <p className="text-gray-500 mb-4">Submit a new request to get started</p>
+          <p className="text-gray-500 mb-4">{t('requests_empty_desc')}</p>
           <button
             onClick={() => { setSelectedRequest(null); setIsModalOpen(true); }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
           >
             <Plus size={18} />
-            New Request
+            {t('requests_new')}
           </button>
         </div>
       ) : (
@@ -497,34 +499,7 @@ const RequestsPage = () => {
                     </button>
                   )}
 
-                  {isAdmin && request.status === 'ASSIGNED' && (
-                    <>
-                      <button
-                        onClick={() => handleBoardingAction(request.id, 'board')}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
-                      >
-                        <CheckCircle size={14} />
-                        Board
-                      </button>
-                      <button
-                        onClick={() => handleBoardingAction(request.id, 'no-show')}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-gray-500 text-white rounded-lg text-sm hover:bg-gray-600"
-                      >
-                        <XCircle size={14} />
-                        No Show
-                      </button>
-                    </>
-                  )}
-
-                  {isAdmin && request.status === 'IN_PROGRESS' && (
-                    <button
-                      onClick={() => handleBoardingAction(request.id, 'drop')}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
-                    >
-                      <CheckCircle size={14} />
-                      Drop
-                    </button>
-                  )}
+                  {/* Boarding / Drop / No-show are driver-only actions from driver dashboard */}
 
                   {/* Cancel button for pending requests */}
                   {request.status === 'PENDING' && (
@@ -547,7 +522,7 @@ const RequestsPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedRequest(null); }}
-        title={selectedRequest ? 'Edit Request' : 'New Cab Request'}
+        title={selectedRequest ? t('requests_edit') : t('requests_new_cab')}
       >
         <RequestForm
           request={selectedRequest}

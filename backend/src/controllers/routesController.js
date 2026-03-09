@@ -64,6 +64,7 @@ exports.createRoute = async (req, res) => {
       start_latitude, start_longitude, 
       end_latitude, end_longitude,
       waypoints, distance_km, estimated_time_minutes 
+      , trip_type, standard_pickup_time
     } = req.body;
 
     // Calculate distance and time if not provided
@@ -90,7 +91,9 @@ exports.createRoute = async (req, res) => {
       end_longitude,
       waypoints,
       distance_km: calcDistance,
-      estimated_time_minutes: calcTime
+      estimated_time_minutes: calcTime,
+      trip_type,
+      standard_pickup_time
     });
 
     res.status(201).json({

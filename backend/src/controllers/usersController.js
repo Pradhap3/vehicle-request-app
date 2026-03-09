@@ -1,6 +1,7 @@
 // src/controllers/usersController.js
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
+const DriverRoute = require('../models/DriverRoute');
 const logger = require('../utils/logger');
 
 // Get all users
@@ -58,7 +59,8 @@ exports.createUser = async (req, res) => {
       });
     }
 
-    const { employee_id, name, email, phone, department, role, password } = req.body;
+    const { employee_id, name, email, phone, department, role, password, route_ids = [] } = req.body;
+    const normalizedRouteIds = Array.isArray(route_ids) ? route_ids.filter((v) => v !== null && v !== undefined && String(v).trim() !== '') : [];
 
     // Check if user already exists
     const existingUser = await User.findByEmail(email);
@@ -86,6 +88,10 @@ exports.createUser = async (req, res) => {
       role,
       password
     });
+
+    if (['CAB_DRIVER', 'DRIVER'].includes(role) && normalizedRouteIds.length >= 0) {
+      await DriverRoute.setRoutesForDriver(user.id, normalizedRouteIds);
+    }
 
     res.status(201).json({
       success: true,
@@ -120,7 +126,8 @@ exports.updateUser = async (req, res) => {
       });
     }
 
-    const { name, email, phone, department, role, password, is_active } = req.body;
+    const { name, email, phone, department, role, password, is_active, route_ids } = req.body;
+    const normalizedRouteIds = Array.isArray(route_ids) ? route_ids.filter((v) => v !== null && v !== undefined && String(v).trim() !== '') : null;
 
     // Check if email is being changed and if it's already taken
     if (email && email !== existingUser.email) {
@@ -142,6 +149,11 @@ exports.updateUser = async (req, res) => {
       password,
       is_active
     });
+
+    const effectiveRole = role || existingUser.role;
+    if (['CAB_DRIVER', 'DRIVER'].includes(effectiveRole) && Array.isArray(normalizedRouteIds)) {
+      await DriverRoute.setRoutesForDriver(req.params.id, normalizedRouteIds);
+    }
 
     res.json({
       success: true,

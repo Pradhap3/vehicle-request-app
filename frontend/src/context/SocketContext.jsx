@@ -56,15 +56,15 @@ export const SocketProvider = ({ children }) => {
       setConnected(false);
     });
 
-    // Listen for driver location updates
-    newSocket.on('driver_location_update', (data) => {
+    // Listen for cab location updates
+    newSocket.on('cab_location_update', (data) => {
       setDriverLocations(prev => ({
         ...prev,
-        [data.cabId]: {
+        [data.cab_id || data.cabId]: {
           latitude: data.latitude,
           longitude: data.longitude,
           timestamp: data.timestamp,
-          driverName: data.driverName
+          driverName: data.driver_name || data.driverName || null
         }
       }));
     });

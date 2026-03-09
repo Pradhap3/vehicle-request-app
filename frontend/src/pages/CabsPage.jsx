@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { cabAPI, userAPI } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   Plus, 
   Search, 
@@ -167,6 +168,7 @@ const CabForm = ({ cab, drivers, onSubmit, onCancel, loading }) => {
 };
 
 const CabsPage = () => {
+  const { t } = useLanguage();
   const [cabs, setCabs] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -254,15 +256,15 @@ const CabsPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Cabs ({cabs.length})</h1>
-          <p className="text-gray-500">Manage fleet vehicles</p>
+          <h1 className="text-2xl font-bold text-gray-800">{t('nav_cabs')} ({cabs.length})</h1>
+          <p className="text-gray-500">{t('cabs_manage_desc')}</p>
         </div>
         <button
           onClick={() => { setSelectedCab(null); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
         >
           <Plus size={20} />
-          Add Cab
+          {t('cabs_add')}
         </button>
       </div>
 
@@ -274,7 +276,7 @@ const CabsPage = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search cabs..."
+            placeholder={t('search_cabs')}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           />
         </div>
@@ -283,7 +285,7 @@ const CabsPage = () => {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white"
         >
-          <option value="">All Status</option>
+          <option value="">{t('all_status')}</option>
           <option value="AVAILABLE">Available</option>
           <option value="ON_TRIP">On Trip</option>
           <option value="MAINTENANCE">Maintenance</option>
@@ -300,13 +302,13 @@ const CabsPage = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <Car size={48} className="mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-800 mb-2">No cabs found</h3>
-          <p className="text-gray-500 mb-4">Add your first cab to the fleet</p>
+          <p className="text-gray-500 mb-4">{t('cabs_empty_desc')}</p>
           <button
             onClick={() => { setSelectedCab(null); setIsModalOpen(true); }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
           >
             <Plus size={18} />
-            Add Cab
+            {t('cabs_add')}
           </button>
         </div>
       ) : (
@@ -369,7 +371,7 @@ const CabsPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => { setIsModalOpen(false); setSelectedCab(null); }}
-        title={selectedCab ? 'Edit Cab' : 'Add New Cab'}
+        title={selectedCab ? t('cabs_edit') : t('cabs_add_new')}
       >
         <CabForm
           cab={selectedCab}
