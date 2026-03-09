@@ -142,7 +142,7 @@ function App() {
             <Route 
               path="/driver" 
               element={
-                <ProtectedRoute allowedRoles={['CAB_DRIVER']}>
+                <ProtectedRoute allowedRoles={['CAB_DRIVER', 'DRIVER']}>
                   <DriverDashboardPage />
                 </ProtectedRoute>
               } 
@@ -152,7 +152,7 @@ function App() {
             <Route 
               path="/employee" 
               element={
-                <ProtectedRoute allowedRoles={['EMPLOYEE']}>
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'USER']}>
                   <EmployeeDashboardPage />
                 </ProtectedRoute>
               } 

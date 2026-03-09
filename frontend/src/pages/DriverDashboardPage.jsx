@@ -204,8 +204,7 @@ const DriverDashboardPage = () => {
     permissionStatus,
     requestPermission,
     startWatching,
-    stopWatching,
-    getCurrentPosition
+    stopWatching
   } = useGeolocation({
     enableHighAccuracy: true,
     timeout: 10000,
@@ -244,8 +243,13 @@ const DriverDashboardPage = () => {
   }, []);
 
   const handleStartTracking = async () => {
+    if (!dashboard?.cab || isTracking) return;
+
     const result = await requestPermission();
     if (result.success) {
+      if (result.location) {
+        handleLocationUpdate(result.location);
+      }
       const id = startWatching();
       setWatchId(id);
       setIsTracking(true);
@@ -357,7 +361,7 @@ const DriverDashboardPage = () => {
       {permissionStatus !== 'granted' && (
         <div className="max-w-2xl">
           <LocationPermissionPrompt
-            onRequestPermission={requestPermission}
+            onRequestPermission={handleStartTracking}
             permissionStatus={permissionStatus}
             loading={locationLoading}
             t={t}

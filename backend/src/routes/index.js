@@ -135,7 +135,7 @@ router.delete('/cabs/:id',
 
 router.post('/cabs/location', 
   authenticate, 
-  authorize('CAB_DRIVER'), 
+  authorize('CAB_DRIVER', 'DRIVER'), 
   [
     body('latitude').isFloat(),
     body('longitude').isFloat()
@@ -145,13 +145,13 @@ router.post('/cabs/location',
 
 router.put('/cabs/:id/status', 
   authenticate, 
-  authorize('HR_ADMIN', 'ADMIN', 'CAB_DRIVER'), 
+  authorize('HR_ADMIN', 'ADMIN', 'CAB_DRIVER', 'DRIVER'), 
   cabsController.updateStatus
 );
 
 router.get('/driver/dashboard', 
   authenticate, 
-  authorize('CAB_DRIVER'), 
+  authorize('CAB_DRIVER', 'DRIVER'), 
   cabsController.getDriverDashboard
 );
 
@@ -207,7 +207,7 @@ router.get('/routes/:id/optimal-departure',
 
 router.post('/routes/:id/reassign-waiting', 
   authenticate, 
-  authorize('HR_ADMIN', 'ADMIN', 'CAB_DRIVER'), 
+  authorize('HR_ADMIN', 'ADMIN', 'CAB_DRIVER', 'DRIVER'), 
   routesController.reassignWaiting
 );
 
@@ -268,25 +268,25 @@ router.post('/requests/:id/cancel',
 
 router.post('/requests/:id/board', 
   authenticate, 
-  authorize('CAB_DRIVER'), 
+  authorize('CAB_DRIVER', 'DRIVER'), 
   requestsController.markBoarded
 );
 
 router.post('/requests/:id/drop', 
   authenticate, 
-  authorize('CAB_DRIVER'), 
+  authorize('CAB_DRIVER', 'DRIVER'), 
   requestsController.markDropped
 );
 
 router.post('/requests/:id/no-show', 
   authenticate, 
-  authorize('CAB_DRIVER', 'HR_ADMIN', 'ADMIN'), 
+  authorize('CAB_DRIVER', 'DRIVER', 'HR_ADMIN', 'ADMIN'), 
   requestsController.markNoShow
 );
 
 router.post('/requests/:id/call-attempt',
   authenticate,
-  authorize('CAB_DRIVER', 'HR_ADMIN', 'ADMIN'),
+  authorize('CAB_DRIVER', 'DRIVER', 'HR_ADMIN', 'ADMIN'),
   requestsController.logCallAttempt
 );
 

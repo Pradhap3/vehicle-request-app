@@ -21,8 +21,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   // If allowedRoles is specified, check if user's role is allowed
   if (allowedRoles && !allowedRoles.includes(user?.role)) {
     // Redirect to appropriate dashboard based on role
-    const redirectPath = user?.role === 'CAB_DRIVER' ? '/driver' : 
-                         user?.role === 'EMPLOYEE' ? '/employee' : '/dashboard';
+    const redirectPath = ['CAB_DRIVER', 'DRIVER'].includes(user?.role) ? '/driver' : 
+                         ['EMPLOYEE', 'USER'].includes(user?.role) ? '/employee' : '/dashboard';
     return <Navigate to={redirectPath} replace />;
   }
 

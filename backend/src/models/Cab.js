@@ -260,6 +260,33 @@ class Cab {
     }
   }
 
+  static async updateStatus(cabId, status) {
+    try {
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'id', cabId);
+      request.input('status', sql.NVarChar(20), status);
+
+      const result = await request.query(`
+        UPDATE cabs
+        SET status = @status,
+            updated_at = GETDATE()
+        OUTPUT INSERTED.*
+        WHERE id = @id
+      `);
+
+      if (result.recordset.length === 0) {
+        throw new Error('Cab not found');
+      }
+
+      logger.info(`Cab ${cabId} status updated to ${status}`);
+      return result.recordset[0];
+    } catch (error) {
+      logger.error('Error updating cab status:', error);
+      throw error;
+    }
+  }
+
   static async findAvailable(routeId = null) {
     try {
       const pool = getPool();
