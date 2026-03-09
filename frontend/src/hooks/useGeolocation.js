@@ -1,6 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 
+const isIosSafariBrowser = () => {
+  if (typeof navigator === 'undefined') return false;
+
+  const ua = navigator.userAgent || '';
+  const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isWebKit = /WebKit/i.test(ua);
+  const isOtherIosBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+
+  return isIos && isWebKit && !isOtherIosBrowser;
+};
+
+const getPermissionDeniedMessage = () => {
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    return 'Location works only on a secure HTTPS page.';
+  }
+
+  if (isIosSafariBrowser()) {
+    return 'Location blocked on iPhone Safari. Enable Settings > Privacy & Security > Location Services > Safari Websites, then allow location for this site and reload.';
+  }
+
+  return 'Location permission denied. Please enable location in browser settings.';
+};
+
 export const useGeolocation = (options = {}) => {
   const [location, setLocation] = useState(null);
   const [error, setError] = useState(null);
@@ -53,6 +76,14 @@ export const useGeolocation = (options = {}) => {
       return { success: false, error: err };
     }
 
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      const err = 'Location works only on a secure HTTPS page.';
+      setError(err);
+      setLoading(false);
+      toast.error(err);
+      return { success: false, error: err };
+    }
+
     return new Promise((resolve) => {
       // Show instruction toast
       toast('Please allow location access when prompted', {
@@ -79,7 +110,7 @@ export const useGeolocation = (options = {}) => {
           
           switch (err.code) {
             case err.PERMISSION_DENIED:
-              errorMessage = 'Location permission denied. Please enable location in browser settings.';
+              errorMessage = getPermissionDeniedMessage();
               setPermissionStatus('denied');
               break;
             case err.POSITION_UNAVAILABLE:
@@ -134,7 +165,8 @@ export const useGeolocation = (options = {}) => {
         let errorMessage = 'Location tracking error';
         switch (err.code) {
           case err.PERMISSION_DENIED:
-            errorMessage = 'Location permission denied';
+            errorMessage = getPermissionDeniedMessage();
+            setPermissionStatus('denied');
             break;
           case err.POSITION_UNAVAILABLE:
             errorMessage = 'Position unavailable';
