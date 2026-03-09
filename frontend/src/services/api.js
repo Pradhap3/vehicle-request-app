@@ -33,7 +33,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
-          const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+          const response = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
           const { token } = response.data;
           localStorage.setItem('token', token);
           originalRequest.headers.Authorization = `Bearer ${token}`;
@@ -53,50 +53,50 @@ api.interceptors.response.use(
 
 // Auth APIs
 export const authAPI = {
-  login: (credentials) => api.post('/auth/login', credentials),
-  logout: () => api.post('/auth/logout'),
-  getMe: () => api.get('/auth/me'),
-  updateProfile: (data) => api.put('/auth/profile', data),
-  changePassword: (data) => api.post('/auth/change-password', data)
+  login: (credentials) => api.post('/api/auth/login', credentials),
+  logout: () => api.post('/api/auth/logout'),
+  getMe: () => api.get('/api/auth/me'),
+  updateProfile: (data) => api.put('/api/auth/profile', data),
+  changePassword: (data) => api.post('/api/auth/change-password', data)
 };
 
 // User APIs
 export const userAPI = {
-  getAll: (params) => api.get('/users', { params }),
-  getById: (id) => api.get(`/users/${id}`),
-  create: (data) => api.post('/users', data),
-  update: (id, data) => api.put(`/users/${id}`, data),
-  delete: (id) => api.delete(`/users/${id}`),
-  hardDelete: (id) => api.delete(`/users/${id}/hard`),
-  getDrivers: () => api.get('/users/drivers'),
-  getEmployees: () => api.get('/users/employees')
+  getAll: (params) => api.get('/api/users', { params }),
+  getById: (id) => api.get(`/api/users/${id}`),
+  create: (data) => api.post('/api/users', data),
+  update: (id, data) => api.put(`/api/users/${id}`, data),
+  delete: (id) => api.delete(`/api/users/${id}`),
+  hardDelete: (id) => api.delete(`/api/users/${id}/hard`),
+  getDrivers: () => api.get('/api/users/drivers'),
+  getEmployees: () => api.get('/api/users/employees')
 };
 
 // Cab APIs
 export const cabAPI = {
-  getAll: (params) => api.get('/cabs', { params }),
-  getById: (id) => api.get(`/cabs/${id}`),
-  create: (data) => api.post('/cabs', data),
-  update: (id, data) => api.put(`/cabs/${id}`, data),
-  delete: (id) => api.delete(`/cabs/${id}`),
-  updateLocation: (data) => api.post('/cabs/location', data),
-  getLocationHistory: (id, params) => api.get(`/cabs/${id}/location-history`, { params }),
-  getAvailable: (params) => api.get('/cabs/available', { params }),
-  updateStatus: (id, status) => api.put(`/cabs/${id}/status`, { status }),
-  getDriverDashboard: () => api.get('/driver/dashboard')
+  getAll: (params) => api.get('/api/cabs', { params }),
+  getById: (id) => api.get(`/api/cabs/${id}`),
+  create: (data) => api.post('/api/cabs', data),
+  update: (id, data) => api.put(`/api/cabs/${id}`, data),
+  delete: (id) => api.delete(`/api/cabs/${id}`),
+  updateLocation: (data) => api.post('/api/cabs/location', data),
+  getLocationHistory: (id, params) => api.get(`/api/cabs/${id}/location-history`, { params }),
+  getAvailable: (params) => api.get('/api/cabs/available', { params }),
+  updateStatus: (id, status) => api.put(`/api/cabs/${id}/status`, { status }),
+  getDriverDashboard: () => api.get('/api/driver/dashboard')
 };
 
 // Route APIs
 export const routeAPI = {
-  getAll: (params) => api.get('/routes', { params }),
-  getById: (id) => api.get(`/routes/${id}`),
-  create: (data) => api.post('/routes', data),
-  update: (id, data) => api.put(`/routes/${id}`, data),
-  delete: (id) => api.delete(`/routes/${id}`),
-  autoAllocate: (id, data) => api.post(`/routes/${id}/auto-allocate`, data),
-  checkTraffic: (id) => api.get(`/routes/${id}/traffic`),
-  getOptimalDeparture: (id) => api.get(`/routes/${id}/optimal-departure`),
-  reassignWaiting: (id, data) => api.post(`/routes/${id}/reassign-waiting`, data)
+  getAll: (params) => api.get('/api/routes', { params }),
+  getById: (id) => api.get(`/api/routes/${id}`),
+  create: (data) => api.post('/api/routes', data),
+  update: (id, data) => api.put(`/api/routes/${id}`, data),
+  delete: (id) => api.delete(`/api/routes/${id}`),
+  autoAllocate: (id, data) => api.post(`/api/routes/${id}/auto-allocate`, data),
+  checkTraffic: (id) => api.get(`/api/routes/${id}/traffic`),
+  getOptimalDeparture: (id) => api.get(`/api/routes/${id}/optimal-departure`),
+  reassignWaiting: (id, data) => api.post(`/api/routes/${id}/reassign-waiting`, data)
 };
 
 const normalizeRequestDatePayload = (data = {}) => {
@@ -157,39 +157,39 @@ const normalizeRequestDatePayload = (data = {}) => {
 
 // Request APIs
 export const requestAPI = {
-  getAll: (params) => api.get('/requests', { params }),
-  getById: (id) => api.get(`/requests/${id}`),
-  create: (data) => api.post('/requests', normalizeRequestDatePayload(data)),
-  update: (id, data) => api.put(`/requests/${id}`, normalizeRequestDatePayload(data)),
-  delete: (id) => api.delete(`/requests/${id}`),
-  assignCab: (id, data) => api.post(`/requests/${id}/assign`, data),
-  cancel: (id) => api.post(`/requests/${id}/cancel`),
-  markBoarded: (id, data) => api.post(`/requests/${id}/board`, data),
-  markDropped: (id, data) => api.post(`/requests/${id}/drop`, data),
-  markNoShow: (id) => api.post(`/requests/${id}/no-show`),
-  logCallAttempt: (id, data) => api.post(`/requests/${id}/call-attempt`, data),
-  getTodayStats: () => api.get('/requests/stats'),
-  getMyRequests: () => api.get('/requests', { params: { my_requests: true } })
+  getAll: (params) => api.get('/api/requests', { params }),
+  getById: (id) => api.get(`/api/requests/${id}`),
+  create: (data) => api.post('/api/requests', normalizeRequestDatePayload(data)),
+  update: (id, data) => api.put(`/api/requests/${id}`, normalizeRequestDatePayload(data)),
+  delete: (id) => api.delete(`/api/requests/${id}`),
+  assignCab: (id, data) => api.post(`/api/requests/${id}/assign`, data),
+  cancel: (id) => api.post(`/api/requests/${id}/cancel`),
+  markBoarded: (id, data) => api.post(`/api/requests/${id}/board`, data),
+  markDropped: (id, data) => api.post(`/api/requests/${id}/drop`, data),
+  markNoShow: (id) => api.post(`/api/requests/${id}/no-show`),
+  logCallAttempt: (id, data) => api.post(`/api/requests/${id}/call-attempt`, data),
+  getTodayStats: () => api.get('/api/requests/stats'),
+  getMyRequests: () => api.get('/api/requests', { params: { my_requests: true } })
 };
 
 // Notification APIs
 export const notificationAPI = {
-  getAll: (params) => api.get('/notifications', { params }),
-  getById: (id) => api.get(`/notifications/${id}`),
-  markAsRead: (id) => api.post(`/notifications/${id}/read`),
-  markAllAsRead: () => api.post('/notifications/read-all'),
-  getUnreadCount: () => api.get('/notifications/unread-count'),
-  delete: (id) => api.delete(`/notifications/${id}`),
-  deleteRead: () => api.delete('/notifications/read'),
-  send: (data) => api.post('/notifications/send', data)
+  getAll: (params) => api.get('/api/notifications', { params }),
+  getById: (id) => api.get(`/api/notifications/${id}`),
+  markAsRead: (id) => api.post(`/api/notifications/${id}/read`),
+  markAllAsRead: () => api.post('/api/notifications/read-all'),
+  getUnreadCount: () => api.get('/api/notifications/unread-count'),
+  delete: (id) => api.delete(`/api/notifications/${id}`),
+  deleteRead: () => api.delete('/api/notifications/read'),
+  send: (data) => api.post('/api/notifications/send', data)
 };
 
 // Dashboard APIs
 export const dashboardAPI = {
-  getStats: () => api.get('/dashboard/stats'),
-  getCapacity: (params) => api.get('/dashboard/capacity', { params }),
-  getTripMetrics: (params) => api.get('/dashboard/trip-metrics', { params }),
-  getDriverPerformance: () => api.get('/dashboard/driver-performance')
+  getStats: () => api.get('/api/dashboard/stats'),
+  getCapacity: (params) => api.get('/api/dashboard/capacity', { params }),
+  getTripMetrics: (params) => api.get('/api/dashboard/trip-metrics', { params }),
+  getDriverPerformance: () => api.get('/api/dashboard/driver-performance')
 };
 
 export default api;
