@@ -10,6 +10,7 @@ const routesController = require('../controllers/routesController');
 const requestsController = require('../controllers/requestsController');
 const notificationsController = require('../controllers/notificationsController');
 const dashboardController = require('../controllers/dashboardController');
+const transportController = require('../controllers/transportController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 const isUuidOrInt = (value) =>
@@ -21,6 +22,8 @@ router.post('/auth/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty()
 ], authController.login);
+router.get('/auth/microsoft/start', authController.getMicrosoftStartUrl);
+router.get('/auth/microsoft/callback', authController.microsoftCallback);
 
 router.post('/auth/refresh', authController.refreshToken);
 
@@ -31,6 +34,30 @@ router.post('/auth/change-password', authenticate, [
   body('newPassword').isLength({ min: 8 })
 ], authController.changePassword);
 router.post('/auth/logout', authenticate, authController.logout);
+
+router.get('/transport/profile',
+  authenticate,
+  authorize('EMPLOYEE', 'USER'),
+  transportController.getMyProfile
+);
+
+router.put('/transport/profile',
+  authenticate,
+  authorize('EMPLOYEE', 'USER'),
+  transportController.upsertMyProfile
+);
+
+router.get('/transport/today-trip',
+  authenticate,
+  authorize('EMPLOYEE', 'USER'),
+  transportController.getMyTodayTrip
+);
+
+router.get('/transport/tracking',
+  authenticate,
+  authorize('EMPLOYEE', 'USER'),
+  transportController.getMyTracking
+);
 
 // ==================== USER ROUTES ====================
 router.get('/users', 

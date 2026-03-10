@@ -19,6 +19,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const createEmptyStop = (sequence = 1) => ({
+  stop_name: '',
+  stop_sequence: sequence,
+  eta_offset_minutes: ''
+});
+
 const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
   if (!isOpen) return null;
   
@@ -54,26 +60,96 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
     end_point: route?.end_point || '',
     distance_km: route?.distance_km || '',
     estimated_time_minutes: route?.estimated_time_minutes || '',
-    is_active: route?.is_active !== false
+    is_active: route?.is_active !== false,
+    stops: Array.isArray(route?.stops) && route.stops.length > 0
+      ? route.stops.map((stop, index) => ({
+          stop_name: stop.stop_name || '',
+          stop_sequence: stop.stop_sequence || index + 1,
+          eta_offset_minutes: stop.eta_offset_minutes ?? ''
+        }))
+      : [createEmptyStop()]
   });
   const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    setFormData({
+      name: route?.name || '',
+      start_point: route?.start_point || '',
+      end_point: route?.end_point || '',
+      distance_km: route?.distance_km || '',
+      estimated_time_minutes: route?.estimated_time_minutes || '',
+      is_active: route?.is_active !== false,
+      stops: Array.isArray(route?.stops) && route.stops.length > 0
+        ? route.stops.map((stop, index) => ({
+            stop_name: stop.stop_name || '',
+            stop_sequence: stop.stop_sequence || index + 1,
+            eta_offset_minutes: stop.eta_offset_minutes ?? ''
+          }))
+        : [createEmptyStop()]
+    });
+  }, [route]);
 
   const validate = () => {
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = 'Route name is required';
     if (!formData.start_point.trim()) newErrors.start_point = 'Start point is required';
     if (!formData.end_point.trim()) newErrors.end_point = 'End point is required';
+    const validStops = formData.stops.filter((stop) => stop.stop_name.trim());
+    if (validStops.length === 0) {
+      newErrors.stops = 'At least one route stop is required';
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const updateStop = (index, field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      stops: prev.stops.map((stop, stopIndex) => (
+        stopIndex === index ? { ...stop, [field]: value } : stop
+      ))
+    }));
+  };
+
+  const addStop = () => {
+    setFormData((prev) => ({
+      ...prev,
+      stops: [...prev.stops, createEmptyStop(prev.stops.length + 1)]
+    }));
+  };
+
+  const removeStop = (index) => {
+    setFormData((prev) => {
+      const nextStops = prev.stops
+        .filter((_, stopIndex) => stopIndex !== index)
+        .map((stop, stopIndex) => ({
+          ...stop,
+          stop_sequence: stopIndex + 1
+        }));
+
+      return {
+        ...prev,
+        stops: nextStops.length > 0 ? nextStops : [createEmptyStop()]
+      };
+    });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validate()) {
+      const cleanedStops = formData.stops
+        .filter((stop) => stop.stop_name.trim())
+        .map((stop, index) => ({
+          stop_name: stop.stop_name.trim(),
+          stop_sequence: index + 1,
+          eta_offset_minutes: stop.eta_offset_minutes === '' ? null : parseInt(stop.eta_offset_minutes, 10)
+        }));
+
       onSubmit({
         ...formData,
         distance_km: formData.distance_km ? parseFloat(formData.distance_km) : null,
-        estimated_time_minutes: formData.estimated_time_minutes ? parseInt(formData.estimated_time_minutes) : null
+        estimated_time_minutes: formData.estimated_time_minutes ? parseInt(formData.estimated_time_minutes, 10) : null,
+        stops: cleanedStops
       });
     }
   };
@@ -174,6 +250,70 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
           />
           <span className="text-sm text-gray-700">Active Route</span>
         </label>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Route Stops</label>
+            <p className="text-xs text-gray-500">Define the daily pickup sequence for recurring transport.</p>
+          </div>
+          <button
+            type="button"
+            onClick={addStop}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100"
+          >
+            <Plus size={16} />
+            Add Stop
+          </button>
+        </div>
+        <div className="space-y-3">
+          {formData.stops.map((stop, index) => (
+            <div key={`${route?.id || 'new'}-stop-${index}`} className="grid grid-cols-12 gap-3 items-end rounded-lg border border-gray-200 p-3">
+              <div className="col-span-6">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Stop Name</label>
+                <input
+                  type="text"
+                  value={stop.stop_name}
+                  onChange={(e) => updateStop(index, 'stop_name', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="Kolar Bus Stand"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sequence</label>
+                <input
+                  type="number"
+                  value={index + 1}
+                  readOnly
+                  className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-500"
+                />
+              </div>
+              <div className="col-span-3">
+                <label className="block text-xs font-medium text-gray-600 mb-1">ETA Offset</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={stop.eta_offset_minutes}
+                  onChange={(e) => updateStop(index, 'eta_offset_minutes', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="10"
+                />
+              </div>
+              <div className="col-span-1">
+                <button
+                  type="button"
+                  onClick={() => removeStop(index)}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                  title="Remove stop"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {errors.stops && <p className="text-red-500 text-xs mt-1">{errors.stops}</p>}
       </div>
 
       <div className="flex gap-3 pt-4">
@@ -333,6 +473,8 @@ const RoutesPage = () => {
   const [isAllocateModalOpen, setIsAllocateModalOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [routeDetailsLoading, setRouteDetailsLoading] = useState(false);
+  const [editingRouteId, setEditingRouteId] = useState(null);
 
   const fetchRoutes = async () => {
     try {
@@ -395,6 +537,26 @@ const RoutesPage = () => {
     }
   };
 
+  const openCreateModal = () => {
+    setSelectedRoute(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = async (routeId) => {
+    try {
+      setEditingRouteId(routeId);
+      setRouteDetailsLoading(true);
+      const response = await routeAPI.getById(routeId);
+      setSelectedRoute(response.data?.data || null);
+      setIsModalOpen(true);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to load route details');
+    } finally {
+      setRouteDetailsLoading(false);
+      setEditingRouteId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -404,7 +566,7 @@ const RoutesPage = () => {
           <p className="text-gray-500">{t('routes_manage_desc')}</p>
         </div>
         <button
-          onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }}
+          onClick={openCreateModal}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
         >
           <Plus size={20} />
@@ -435,7 +597,7 @@ const RoutesPage = () => {
           <h3 className="text-lg font-medium text-gray-800 mb-2">No routes found</h3>
           <p className="text-gray-500 mb-4">{t('routes_empty_desc')}</p>
           <button
-            onClick={() => { setSelectedRoute(null); setIsModalOpen(true); }}
+            onClick={openCreateModal}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
           >
             <Plus size={18} />
@@ -492,11 +654,12 @@ const RoutesPage = () => {
                     <Zap size={18} />
                   </button>
                   <button
-                    onClick={() => { setSelectedRoute(route); setIsModalOpen(true); }}
-                    className="p-2 text-gray-500 hover:text-primary-500 hover:bg-gray-100 rounded-lg"
+                    onClick={() => openEditModal(route.id)}
+                    className="p-2 text-gray-500 hover:text-primary-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"
                     title="Edit route"
+                    disabled={routeDetailsLoading}
                   >
-                    <Edit2 size={18} />
+                    {routeDetailsLoading && editingRouteId === route.id ? <RefreshCw size={18} className="animate-spin" /> : <Edit2 size={18} />}
                   </button>
                   <button
                     onClick={() => { setSelectedRoute(route); setIsDeleteModalOpen(true); }}
@@ -518,12 +681,18 @@ const RoutesPage = () => {
         onClose={() => { setIsModalOpen(false); setSelectedRoute(null); }}
         title={selectedRoute ? t('routes_edit') : t('routes_create_new')}
       >
-        <RouteForm
-          route={selectedRoute}
-          onSubmit={selectedRoute ? handleUpdateRoute : handleCreateRoute}
-          onCancel={() => { setIsModalOpen(false); setSelectedRoute(null); }}
-          loading={actionLoading}
-        />
+        {routeDetailsLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : (
+          <RouteForm
+            route={selectedRoute}
+            onSubmit={selectedRoute ? handleUpdateRoute : handleCreateRoute}
+            onCancel={() => { setIsModalOpen(false); setSelectedRoute(null); }}
+            loading={actionLoading}
+          />
+        )}
       </Modal>
 
       {/* AI Allocate Modal */}

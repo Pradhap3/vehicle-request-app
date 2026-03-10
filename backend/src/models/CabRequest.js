@@ -269,6 +269,11 @@ class CabRequest {
         insertColumns.push('priority');
         insertValues.push('@priority');
       }
+      if (schema.hasColumn('request_type') && requestData.request_type !== undefined) {
+        request.input('request_type', sql.NVarChar(40), requestData.request_type);
+        insertColumns.push('request_type');
+        insertValues.push('@request_type');
+      }
 
       if (schema.hasColumn('number_of_people') && requestData.number_of_people !== undefined) {
         request.input('number_of_people', sql.Int, requestData.number_of_people);
@@ -354,6 +359,10 @@ class CabRequest {
       if (schema.hasColumn('priority') && requestData.priority !== undefined) {
         request.input('priority', sql.NVarChar(40), requestData.priority);
         updates.push('priority = @priority');
+      }
+      if (schema.hasColumn('request_type') && requestData.request_type !== undefined) {
+        request.input('request_type', sql.NVarChar(40), requestData.request_type);
+        updates.push('request_type = @request_type');
       }
       if (schema.assignmentColumn && (requestData.cab_id !== undefined || requestData.assigned_cab_id !== undefined)) {
         bindFlexibleId(request, 'assigned_cab_id', requestData.assigned_cab_id ?? requestData.cab_id ?? null);

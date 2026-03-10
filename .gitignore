@@ -10,6 +10,8 @@
 .env.bak
 .env.example
 .env.example.bak
+.env.*
+!.env.sample
 
 # Node
 node_modules/
@@ -36,6 +38,8 @@ Thumbs.db
 # Logs
 logs/
 *.log
+*.pid
+*.seed
 
 # OS
 .DS_Store
@@ -44,3 +48,14 @@ logs/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+
+# Deployment and secrets
+.vercel/
+.render/
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+secrets/
+credentials/

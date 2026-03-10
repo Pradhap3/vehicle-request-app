@@ -34,7 +34,8 @@ api.interceptors.response.use(
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
           const response = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
-          const { token } = response.data;
+          const responseData = response.data?.data || response.data;
+          const { token } = responseData;
           localStorage.setItem('token', token);
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return api(originalRequest);
@@ -54,6 +55,7 @@ api.interceptors.response.use(
 // Auth APIs
 export const authAPI = {
   login: (credentials) => api.post('/api/auth/login', credentials),
+  getMicrosoftStartUrl: (redirect) => api.get('/api/auth/microsoft/start', { params: { redirect } }),
   logout: () => api.post('/api/auth/logout'),
   getMe: () => api.get('/api/auth/me'),
   updateProfile: (data) => api.put('/api/auth/profile', data),
@@ -170,6 +172,13 @@ export const requestAPI = {
   logCallAttempt: (id, data) => api.post(`/api/requests/${id}/call-attempt`, data),
   getTodayStats: () => api.get('/api/requests/stats'),
   getMyRequests: () => api.get('/api/requests', { params: { my_requests: true } })
+};
+
+export const transportAPI = {
+  getMyProfile: () => api.get('/api/transport/profile'),
+  saveMyProfile: (data) => api.put('/api/transport/profile', data),
+  getMyTodayTrip: () => api.get('/api/transport/today-trip'),
+  getMyTracking: () => api.get('/api/transport/tracking')
 };
 
 // Notification APIs

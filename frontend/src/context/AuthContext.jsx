@@ -69,6 +69,21 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const completeLogin = useCallback(({ user: userData, token, refreshToken }, options = {}) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('refreshToken', refreshToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+
+    setUser(userData);
+    setIsAuthenticated(true);
+
+    if (!options.silent) {
+      toast.success(`Welcome back, ${userData.name}!`);
+    }
+
+    return { success: true, user: userData };
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authAPI.logout();
@@ -95,6 +110,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated,
     login,
+    completeLogin,
     logout,
     updateUser,
     isAdmin: user?.role === 'HR_ADMIN' || user?.role === 'ADMIN',

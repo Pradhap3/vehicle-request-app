@@ -34,6 +34,31 @@ const getIdInput = (request, paramName, id) => {
 class User {
   static usersSchemaCache = null;
 
+  static getUserSelectList(schema, { includePassword = false, includeTimestamps = false } = {}) {
+    const columns = [
+      'id',
+      'employee_id',
+      'name',
+      'email',
+      'phone',
+      'department',
+      'role'
+    ];
+
+    if (schema?.hasColumn('preferred_language')) columns.push('preferred_language');
+    if (includePassword) columns.push('password_hash');
+    if (schema?.hasColumn('auth_provider')) columns.push('auth_provider');
+    if (schema?.hasColumn('external_subject')) columns.push('external_subject');
+    columns.push('is_active');
+    if (schema?.hasColumn('last_login')) columns.push('last_login');
+    if (includeTimestamps) {
+      columns.push('created_at');
+      columns.push('updated_at');
+    }
+
+    return columns.join(', ');
+  }
+
   static async getUsersSchema() {
     if (this.usersSchemaCache) return this.usersSchemaCache;
 
@@ -48,8 +73,11 @@ class User {
       WHERE c.object_id = OBJECT_ID('users')
     `);
 
+    const columns = new Set(result.recordset.map((row) => String(row.column_name).toLowerCase()));
+    const hasColumn = (name) => columns.has(name);
     const idMeta = result.recordset.find((row) => String(row.column_name).toLowerCase() === 'id');
     this.usersSchemaCache = {
+      hasColumn,
       idIsIdentity: Boolean(idMeta && idMeta.is_identity === 1)
     };
 
@@ -59,10 +87,10 @@ class User {
   static async findAll() {
     try {
       const pool = getPool();
+      const schema = await this.getUsersSchema();
       const result = await pool.request()
         .query(`
-          SELECT id, employee_id, name, email, phone, department, role, 
-                 is_active, created_at, updated_at
+          SELECT ${this.getUserSelectList(schema, { includeTimestamps: true })}
           FROM users 
           WHERE is_active = 1
           ORDER BY created_at DESC
@@ -78,12 +106,12 @@ class User {
   static async findById(id) {
     try {
       const pool = getPool();
+      const schema = await this.getUsersSchema();
       const request = pool.request();
       getIdInput(request, 'id', id);
       
       const result = await request.query(`
-          SELECT id, employee_id, name, email, phone, department, role, 
-                 is_active, created_at, updated_at
+          SELECT ${this.getUserSelectList(schema, { includeTimestamps: true })}
           FROM users 
           WHERE id = @id
         `);
@@ -97,11 +125,11 @@ class User {
   static async findByEmail(email) {
     try {
       const pool = getPool();
+      const schema = await this.getUsersSchema();
       const result = await pool.request()
         .input('email', sql.NVarChar(255), email)
         .query(`
-          SELECT id, employee_id, name, email, phone, department, role, 
-                 password_hash, is_active
+          SELECT ${this.getUserSelectList(schema, { includePassword: true })}
           FROM users 
           WHERE email = @email
         `);
@@ -115,10 +143,11 @@ class User {
   static async findByEmployeeId(employeeId) {
     try {
       const pool = getPool();
+      const schema = await this.getUsersSchema();
       const result = await pool.request()
         .input('employeeId', sql.NVarChar(50), employeeId)
         .query(`
-          SELECT id, employee_id, name, email, phone, department, role, is_active
+          SELECT ${this.getUserSelectList(schema)}
           FROM users 
           WHERE employee_id = @employeeId
         `);
@@ -133,7 +162,8 @@ class User {
     try {
       const pool = getPool();
       const schema = await this.getUsersSchema();
-      const hashedPassword = await bcrypt.hash(userData.password, 12);
+      const passwordSeed = userData.password || uuidv4();
+      const hashedPassword = await bcrypt.hash(passwordSeed, 12);
       const newId = uuidv4().toUpperCase();
       const request = pool.request()
         .input('employee_id', sql.NVarChar(50), userData.employee_id)
@@ -147,6 +177,17 @@ class User {
 
       const columns = ['employee_id', 'name', 'email', 'phone', 'department', 'role', 'password_hash', 'is_active', 'created_at', 'updated_at'];
       const values = ['@employee_id', '@name', '@email', '@phone', '@department', '@role', '@password_hash', '@is_active', 'GETDATE()', 'GETDATE()'];
+
+      if (schema.hasColumn('auth_provider')) {
+        request.input('auth_provider', sql.NVarChar(50), userData.auth_provider || 'LOCAL');
+        columns.push('auth_provider');
+        values.push('@auth_provider');
+      }
+      if (schema.hasColumn('external_subject') && userData.external_subject !== undefined) {
+        request.input('external_subject', sql.NVarChar(255), userData.external_subject || null);
+        columns.push('external_subject');
+        values.push('@external_subject');
+      }
 
       if (!schema.idIsIdentity) {
         request.input('id', sql.NVarChar(255), newId);
@@ -171,6 +212,7 @@ class User {
   static async update(id, userData) {
     try {
       const pool = getPool();
+      const schema = await this.getUsersSchema();
       const request = pool.request();
       getIdInput(request, 'id', id);
       
@@ -209,14 +251,33 @@ class User {
         request.input('is_active', sql.Bit, userData.is_active);
         updates.push('is_active = @is_active');
       }
+      if (schema.hasColumn('auth_provider') && userData.auth_provider !== undefined) {
+        request.input('auth_provider', sql.NVarChar(50), userData.auth_provider);
+        updates.push('auth_provider = @auth_provider');
+      }
+      if (schema.hasColumn('external_subject') && userData.external_subject !== undefined) {
+        request.input('external_subject', sql.NVarChar(255), userData.external_subject);
+        updates.push('external_subject = @external_subject');
+      }
       
       updates.push('updated_at = GETDATE()');
+
+      const outputColumns = [
+        'INSERTED.id',
+        'INSERTED.employee_id',
+        'INSERTED.name',
+        'INSERTED.email',
+        'INSERTED.department',
+        'INSERTED.role'
+      ];
+      if (schema.hasColumn('auth_provider')) outputColumns.push('INSERTED.auth_provider');
+      if (schema.hasColumn('external_subject')) outputColumns.push('INSERTED.external_subject');
+      outputColumns.push('INSERTED.is_active', 'INSERTED.updated_at');
       
       const result = await request.query(`
         UPDATE users 
         SET ${updates.join(', ')}
-        OUTPUT INSERTED.id, INSERTED.employee_id, INSERTED.name, INSERTED.email, 
-               INSERTED.department, INSERTED.role, INSERTED.is_active, INSERTED.updated_at
+        OUTPUT ${outputColumns.join(', ')}
         WHERE id = @id
       `);
       
@@ -281,6 +342,29 @@ class User {
       await request.query('UPDATE users SET last_login = GETDATE() WHERE id = @id');
     } catch (error) {
       logger.error('Error updating last login:', error);
+    }
+  }
+
+  static async findByExternalIdentity(authProvider, externalSubject) {
+    try {
+      const schema = await this.getUsersSchema();
+      if (!schema.hasColumn('auth_provider') || !schema.hasColumn('external_subject')) {
+        return null;
+      }
+
+      const pool = getPool();
+      const result = await pool.request()
+        .input('auth_provider', sql.NVarChar(50), authProvider)
+        .input('external_subject', sql.NVarChar(255), externalSubject)
+        .query(`
+          SELECT ${this.getUserSelectList(schema, { includePassword: true })}
+          FROM users
+          WHERE auth_provider = @auth_provider AND external_subject = @external_subject
+        `);
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('Error finding user by external identity:', error);
+      throw error;
     }
   }
 

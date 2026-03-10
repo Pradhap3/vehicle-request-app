@@ -3,12 +3,14 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react';
+import { authAPI } from '../services/api';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [microsoftLoading, setMicrosoftLoading] = useState(false);
   const [error, setError] = useState('');
   
   const { login } = useAuth();
@@ -41,12 +43,15 @@ const LoginPage = () => {
       if (from === '/') {
         switch (user.role) {
           case 'HR_ADMIN':
+          case 'ADMIN':
             redirectPath = '/dashboard';
             break;
           case 'CAB_DRIVER':
+          case 'DRIVER':
             redirectPath = '/driver';
             break;
           case 'EMPLOYEE':
+          case 'USER':
             redirectPath = '/employee';
             break;
           default:
@@ -57,6 +62,22 @@ const LoginPage = () => {
       navigate(redirectPath, { replace: true });
     } else {
       setError(result.error);
+    }
+  };
+
+  const handleMicrosoftLogin = async () => {
+    try {
+      setError('');
+      setMicrosoftLoading(true);
+      const response = await authAPI.getMicrosoftStartUrl(from === '/login' ? '/' : from);
+      const url = response?.data?.data?.url;
+      if (!url) {
+        throw new Error('Microsoft sign-in URL is missing');
+      }
+      window.location.href = url;
+    } catch (err) {
+      setMicrosoftLoading(false);
+      setError(err.response?.data?.error || err.message || 'Microsoft sign-in failed');
     }
   };
 
@@ -106,6 +127,23 @@ const LoginPage = () => {
                 <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
+
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={handleMicrosoftLogin}
+                disabled={loading || microsoftLoading}
+                className="w-full py-3 border border-gray-300 bg-white text-gray-800 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {microsoftLoading ? 'Redirecting to Microsoft...' : 'Continue with Microsoft'}
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-gray-200"></div>
+                <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Driver login</span>
+                <div className="h-px flex-1 bg-gray-200"></div>
+              </div>
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>

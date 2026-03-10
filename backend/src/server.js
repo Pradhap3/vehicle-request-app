@@ -17,6 +17,7 @@ const logger = require('./utils/logger');
 const EmailService = require('./services/EmailService');
 const SmartAllocationService = require('./ai/SmartAllocationService');
 const DelayMonitoringService = require('./services/DelayMonitoringService');
+const RecurringTransportService = require('./services/RecurringTransportService');
 
 const app = express();
 const server = http.createServer(app);
@@ -180,21 +181,32 @@ const setupCronJobs = () => {
   });
 
   // Check traffic for all active routes every 10 minutes
-  if (process.env.ENABLE_AI_FEATURES === 'true') {
-    // Auto-assign upcoming rides every minute for requests within assignment window.
-    cron.schedule('* * * * *', async () => {
-      try {
-        const result = await SmartAllocationService.autoAllocateUpcomingRequests(autoAssignWindowMinutes);
-        if (result.success && result.totalAllocations > 0) {
-          logger.info(
-            `Auto-assigned ${result.totalAllocations} request(s) across ${result.processedRoutes} route(s)`
-          );
-        }
-      } catch (error) {
-        logger.error('Auto assignment cron error:', error);
+  cron.schedule('*/30 * * * *', async () => {
+    try {
+      const result = await RecurringTransportService.ensureDailyTrips(new Date(), { io });
+      if (result.success && result.generatedCount > 0) {
+        logger.info(`Generated ${result.generatedCount} recurring commute request(s)`);
       }
-    });
+    } catch (error) {
+      logger.error('Recurring transport cron error:', error);
+    }
+  });
 
+  // Auto-assign upcoming rides every minute for requests within assignment window.
+  cron.schedule('* * * * *', async () => {
+    try {
+      const result = await SmartAllocationService.autoAllocateUpcomingRequests(autoAssignWindowMinutes);
+      if (result.success && result.totalAllocations > 0) {
+        logger.info(
+          `Auto-assigned ${result.totalAllocations} request(s) across ${result.processedRoutes} route(s)`
+        );
+      }
+    } catch (error) {
+      logger.error('Auto assignment cron error:', error);
+    }
+  });
+
+  if (process.env.ENABLE_AI_FEATURES === 'true') {
     cron.schedule('*/10 * * * *', async () => {
       try {
         const Route = require('./models/Route');

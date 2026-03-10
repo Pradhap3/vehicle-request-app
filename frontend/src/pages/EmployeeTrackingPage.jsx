@@ -1,0 +1,296 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { MapContainer, Marker, Popup, Polyline, TileLayer, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import { AlertTriangle, Car, Clock, MapPin, Navigation, Phone, RefreshCw, Route } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { transportAPI } from '../services/api';
+import { useSocket } from '../context/SocketContext';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
+
+const createCabIcon = () =>
+  L.divIcon({
+    className: 'employee-cab-marker',
+    html: `
+      <div style="
+        width: 38px;
+        height: 38px;
+        background: #2563eb;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+        border: 3px solid white;
+      ">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="1">
+          <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+          <circle cx="7" cy="17" r="2"/>
+          <path d="M9 17h6"/>
+          <circle cx="17" cy="17" r="2"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [38, 38],
+    iconAnchor: [19, 19],
+    popupAnchor: [0, -18]
+  });
+
+const stopIcon = L.divIcon({
+  className: 'employee-stop-marker',
+  html: `
+    <div style="
+      width: 16px;
+      height: 16px;
+      background: #10b981;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+    "></div>
+  `,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8]
+});
+
+const MapViewport = ({ bounds, center }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (bounds?.length >= 2) {
+      map.fitBounds(bounds, { padding: [40, 40] });
+      return;
+    }
+    if (center) {
+      map.setView(center, 13);
+    }
+  }, [bounds, center, map]);
+
+  return null;
+};
+
+const formatTimestamp = (value) => {
+  if (!value) return 'Unknown';
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const EmployeeTrackingPage = () => {
+  const { driverLocations, connected } = useSocket();
+  const [tracking, setTracking] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchTracking = async () => {
+    try {
+      setLoading(true);
+      const response = await transportAPI.getMyTracking();
+      setTracking(response.data?.data || null);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to load tracking');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTracking();
+    const interval = setInterval(fetchTracking, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const cabSocketLocation = tracking?.cab?.id ? driverLocations[tracking.cab.id] : null;
+  const currentCab = useMemo(() => {
+    if (!tracking?.cab) return null;
+    if (!cabSocketLocation) return tracking.cab;
+    return {
+      ...tracking.cab,
+      current_latitude: cabSocketLocation.latitude,
+      current_longitude: cabSocketLocation.longitude,
+      last_location_update: cabSocketLocation.timestamp
+    };
+  }, [tracking?.cab, cabSocketLocation]);
+
+  const routeStopsWithCoords = useMemo(
+    () => (tracking?.route?.stops || []).filter((stop) => stop.latitude != null && stop.longitude != null),
+    [tracking?.route?.stops]
+  );
+
+  const pathPoints = useMemo(
+    () => (tracking?.history || [])
+      .filter((point) => point.latitude != null && point.longitude != null)
+      .map((point) => [point.latitude, point.longitude]),
+    [tracking?.history]
+  );
+
+  const mapBounds = useMemo(() => {
+    const points = [];
+    if (currentCab?.current_latitude != null && currentCab?.current_longitude != null) {
+      points.push([currentCab.current_latitude, currentCab.current_longitude]);
+    }
+    routeStopsWithCoords.forEach((stop) => points.push([stop.latitude, stop.longitude]));
+    pathPoints.forEach((point) => points.push(point));
+    return points;
+  }, [currentCab, pathPoints, routeStopsWithCoords]);
+
+  const fallbackCenter = mapBounds[0] || [13.2947, 78.2172];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!tracking?.trip) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Track My Cab</h1>
+          <p className="text-gray-500">Live route view for your assigned commute cab.</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10 text-center">
+          <Route className="mx-auto text-gray-300 mb-4" size={48} />
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">No trip available</h2>
+          <p className="text-gray-500 mb-4">Your daily trip has not been assigned yet.</p>
+          <Link to="/employee" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">
+            Back to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Track My Cab</h1>
+          <p className="text-gray-500 flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            {connected ? 'Real-time updates active' : 'Realtime connection retrying'}
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Link to="/employee" className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-700">
+            Back
+          </Link>
+          <button onClick={fetchTracking} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">
+            <RefreshCw size={18} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <div className="xl:col-span-3 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="h-[620px]">
+            <MapContainer center={fallbackCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <MapViewport bounds={mapBounds} center={fallbackCenter} />
+
+              {pathPoints.length > 1 && (
+                <Polyline positions={pathPoints} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.7 }} />
+              )}
+
+              {routeStopsWithCoords.map((stop) => (
+                <Marker key={stop.id} position={[stop.latitude, stop.longitude]} icon={stopIcon}>
+                  <Popup>
+                    <div className="min-w-[160px]">
+                      <p className="font-semibold text-gray-800">{stop.stop_name}</p>
+                      <p className="text-sm text-gray-600">Stop {stop.stop_sequence}</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+
+              {currentCab?.current_latitude != null && currentCab?.current_longitude != null && (
+                <Marker position={[currentCab.current_latitude, currentCab.current_longitude]} icon={createCabIcon()}>
+                  <Popup>
+                    <div className="min-w-[180px]">
+                      <p className="font-semibold text-gray-800">{currentCab.cab_number}</p>
+                      <p className="text-sm text-gray-600">{currentCab.driver_name || 'Driver assigned'}</p>
+                      <p className="text-xs text-gray-500 mt-1">Updated {formatTimestamp(currentCab.last_location_update)}</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+            </MapContainer>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <h2 className="font-semibold text-gray-800 mb-3">Trip Details</h2>
+            <div className="space-y-2 text-sm text-gray-600">
+              <p className="flex items-center gap-2"><Clock size={14} /> Pickup: {tracking.trip.pickup_time ? formatTimestamp(tracking.trip.pickup_time) : 'Scheduled'}</p>
+              <p className="flex items-center gap-2"><MapPin size={14} /> {tracking.trip.pickup_location}</p>
+              <p className="flex items-center gap-2"><Navigation size={14} /> {tracking.trip.drop_location}</p>
+              {tracking.route?.name && <p className="flex items-center gap-2"><Route size={14} /> {tracking.route.name}</p>}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <h2 className="font-semibold text-gray-800 mb-3">Cab Status</h2>
+            {currentCab ? (
+              <div className="space-y-3 text-sm text-gray-600">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                    <Car className="text-primary-600" size={20} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800">{currentCab.cab_number}</p>
+                    <p>{currentCab.status}</p>
+                  </div>
+                </div>
+                <p>{currentCab.driver_name || tracking.trip.driver_name || 'Driver assigned'}</p>
+                {(currentCab.driver_phone || tracking.trip.driver_phone) && (
+                  <a href={`tel:${currentCab.driver_phone || tracking.trip.driver_phone}`} className="inline-flex items-center gap-2 text-primary-600 hover:underline">
+                    <Phone size={14} />
+                    {currentCab.driver_phone || tracking.trip.driver_phone}
+                  </a>
+                )}
+                <p className="text-xs text-gray-500">Last location update: {formatTimestamp(currentCab.last_location_update)}</p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                <p>Cab is not assigned yet. Tracking will appear automatically once the trip is allocated.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <h2 className="font-semibold text-gray-800 mb-3">Route Stops</h2>
+            {tracking.route?.stops?.length > 0 ? (
+              <div className="space-y-2">
+                {tracking.route.stops.map((stop) => (
+                  <div key={stop.id} className="flex items-center gap-3 text-sm text-gray-600">
+                    <span className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold">
+                      {stop.stop_sequence}
+                    </span>
+                    <div>
+                      <p className="font-medium text-gray-800">{stop.stop_name}</p>
+                      {stop.eta_offset_minutes ? <p className="text-xs text-gray-500">+{stop.eta_offset_minutes} min from route start</p> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Route stops are not configured with the route yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default EmployeeTrackingPage;

@@ -2,6 +2,9 @@
 const { validationResult } = require('express-validator');
 const Cab = require('../models/Cab');
 const CabRequest = require('../models/CabRequest');
+const Route = require('../models/Route');
+const RouteStop = require('../models/RouteStop');
+const RecurringTransportService = require('../services/RecurringTransportService');
 const logger = require('../utils/logger');
 
 // Get all cabs
@@ -285,6 +288,7 @@ exports.updateStatus = async (req, res) => {
 // Get driver's cab and assignments
 exports.getDriverDashboard = async (req, res) => {
   try {
+    await RecurringTransportService.ensureDailyTrips(new Date(), { io: req.io });
     const cab = await Cab.findByDriverId(req.user.id);
     
     if (!cab) {
@@ -299,11 +303,15 @@ exports.getDriverDashboard = async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
     const assignments = await CabRequest.getAssignedRequestsForCab(cab.id, today);
+    const primaryRouteId = assignments[0]?.route_id || null;
+    const route = primaryRouteId ? await Route.findById(primaryRouteId) : null;
+    const stops = primaryRouteId ? await RouteStop.findByRouteId(primaryRouteId) : [];
 
     res.json({
       success: true,
       data: {
         cab,
+        route: route ? { ...route, stops } : null,
         assignments,
         passengers: assignments,
         locationEnabled: !!(cab.current_latitude && cab.current_longitude)

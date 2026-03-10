@@ -9,6 +9,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import LoginPage from './pages/LoginPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import UsersPage from './pages/UsersPage';
 import CabsPage from './pages/CabsPage';
@@ -17,6 +18,7 @@ import RequestsPage from './pages/RequestsPage';
 import LiveTrackingPage from './pages/LiveTrackingPage';
 import DriverDashboardPage from './pages/DriverDashboardPage';
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage';
+import EmployeeTrackingPage from './pages/EmployeeTrackingPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -84,6 +86,7 @@ function App() {
           path="/login" 
           element={isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <LoginPage />} 
         />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
@@ -156,6 +159,14 @@ function App() {
                   <EmployeeDashboardPage />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/employee/tracking"
+              element={
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'USER']}>
+                  <EmployeeTrackingPage />
+                </ProtectedRoute>
+              }
             />
 
             {/* Common Routes */}

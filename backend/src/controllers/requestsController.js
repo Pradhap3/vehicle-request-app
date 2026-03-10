@@ -6,6 +6,7 @@ const Notification = require('../models/Notification');
 const SmartAllocationService = require('../ai/SmartAllocationService');
 const Cab = require('../models/Cab');
 const AuditLog = require('../models/AuditLog');
+const RecurringTransportService = require('../services/RecurringTransportService');
 const logger = require('../utils/logger');
 
 const BOOKING_MIN_ADVANCE_MINUTES = parseInt(process.env.BOOKING_MIN_ADVANCE_MINUTES || '60', 10);
@@ -122,6 +123,7 @@ exports.getRequests = async (req, res) => {
     // If employee or requesting own requests, filter by employee_id
     const userRole = req.user.role;
     if (userRole === 'EMPLOYEE' || userRole === 'USER' || my_requests === 'true') {
+      await RecurringTransportService.ensureDailyTrips(new Date(), { io: req.io });
       filters.employee_id = req.user.id;
     }
 
@@ -199,7 +201,8 @@ exports.createRequest = async (req, res) => {
       number_of_people,
       priority,
       boarding_area,
-      dropping_area
+      dropping_area,
+      request_type
     } = req.body;
     // Use route standard pickup time as fallback if explicit time not provided.
     let route = null;
@@ -288,6 +291,7 @@ exports.createRequest = async (req, res) => {
       destination_location: destination_location || dropping_area || drop_location || null,
       number_of_people: number_of_people ?? 1,
       priority: priority || 'NORMAL',
+      request_type: request_type || 'ADHOC',
       boarding_area: boarding_area || pickup_location || null,
       dropping_area: dropping_area || drop_location || null
     });
@@ -357,7 +361,8 @@ exports.updateRequest = async (req, res) => {
       dropping_area,
       status,
       number_of_people,
-      priority
+      priority,
+      request_type
     } = req.body;
 
     const normalizedRequestedTime =
@@ -421,6 +426,7 @@ exports.updateRequest = async (req, res) => {
       dropping_area,
       number_of_people,
       priority,
+      request_type,
       status
     });
 

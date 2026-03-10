@@ -2,6 +2,7 @@
 const { sql, getPool } = require('../config/database');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const RouteStop = require('./RouteStop');
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -134,6 +135,7 @@ class Route {
   static async update(id, routeData) {
     try {
       const pool = getPool();
+      const schema = await this.getRoutesSchema();
       const request = pool.request();
       bindFlexibleId(request, 'id', id);
       
@@ -218,7 +220,8 @@ class Route {
     try {
       const route = await this.findById(id);
       if (!route) return null;
-      return route;
+      const stops = await RouteStop.findByRouteId(id);
+      return { ...route, stops };
     } catch (error) {
       logger.error('Error getting route with assignments:', error);
       throw error;

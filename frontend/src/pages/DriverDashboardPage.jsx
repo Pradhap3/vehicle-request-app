@@ -510,6 +510,24 @@ const DriverDashboardPage = () => {
               {t('driver_estimated_time')}: {dashboard.route.estimated_time_minutes} {t('driver_minutes')}
             </p>
           )}
+          {dashboard.route.stops?.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm font-medium text-gray-700 mb-2">Stops</p>
+              <div className="space-y-2">
+                {dashboard.route.stops.map((stop) => (
+                  <div key={stop.id} className="flex items-center gap-3 text-sm text-gray-600">
+                    <span className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold">
+                      {stop.stop_sequence}
+                    </span>
+                    <span>{stop.stop_name}</span>
+                    {stop.eta_offset_minutes ? (
+                      <span className="text-xs text-gray-400">+{stop.eta_offset_minutes} min</span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

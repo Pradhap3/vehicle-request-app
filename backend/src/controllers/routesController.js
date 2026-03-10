@@ -1,6 +1,7 @@
 // src/controllers/routesController.js
 const { validationResult } = require('express-validator');
 const Route = require('../models/Route');
+const RouteStop = require('../models/RouteStop');
 const SmartAllocationService = require('../ai/SmartAllocationService');
 const logger = require('../utils/logger');
 
@@ -64,7 +65,7 @@ exports.createRoute = async (req, res) => {
       start_latitude, start_longitude, 
       end_latitude, end_longitude,
       waypoints, distance_km, estimated_time_minutes 
-      , trip_type, standard_pickup_time
+      , trip_type, standard_pickup_time, stops = []
     } = req.body;
 
     // Calculate distance and time if not provided
@@ -95,6 +96,10 @@ exports.createRoute = async (req, res) => {
       trip_type,
       standard_pickup_time
     });
+
+    if (Array.isArray(stops) && stops.length > 0) {
+      route.stops = await RouteStop.replaceForRoute(route.id, stops);
+    }
 
     res.status(201).json({
       success: true,
@@ -130,6 +135,9 @@ exports.updateRoute = async (req, res) => {
     }
 
     const route = await Route.update(req.params.id, req.body);
+    if (Array.isArray(req.body.stops)) {
+      route.stops = await RouteStop.replaceForRoute(req.params.id, req.body.stops);
+    }
 
     res.json({
       success: true,
