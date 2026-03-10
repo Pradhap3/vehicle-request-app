@@ -135,12 +135,12 @@ const LoginPage = () => {
                 disabled={loading || microsoftLoading}
                 className="w-full py-3 border border-gray-300 bg-white text-gray-800 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {microsoftLoading ? 'Redirecting to Microsoft...' : 'Continue with Microsoft'}
+                {microsoftLoading ? t('login_microsoft_signing_in') : t('login_microsoft')}
               </button>
 
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-gray-200"></div>
-                <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Driver login</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-gray-400">{t('login_driver_section')}</span>
                 <div className="h-px flex-1 bg-gray-200"></div>
               </div>
             </div>
@@ -148,7 +148,7 @@ const LoginPage = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label htmlFor="driverName" className="block text-sm font-medium text-gray-700 mb-2">
-                  Driver Name <span className="text-red-500">*</span>
+                  {t('login_driver_name')} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -158,7 +158,7 @@ const LoginPage = () => {
                     value={driverName}
                     onChange={(e) => setDriverName(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-                    placeholder="Enter driver name"
+                    placeholder={t('login_driver_name_placeholder')}
                     autoComplete="username"
                     disabled={loading}
                   />

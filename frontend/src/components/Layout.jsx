@@ -133,7 +133,7 @@ const Layout = () => {
       return [
         { path: '/employee', icon: LayoutDashboard, label: t('nav_my_dashboard') },
         { path: '/requests', icon: ClipboardList, label: t('nav_my_requests') },
-        { path: '/employee/tracking', icon: MapPin, label: 'Track My Cab' },
+        { path: '/employee/tracking', icon: MapPin, label: t('nav_track_my_cab') },
       ];
     }
     // Fallback for any other role - show admin navigation
@@ -201,7 +201,7 @@ const Layout = () => {
           {!isEmployee && (
             <div className="flex items-center gap-2 text-xs text-primary-200 mb-3">
               <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
-              {connected ? 'Connected' : 'Disconnected'}
+              {connected ? t('common_connected') : t('common_disconnected')}
             </div>
           )}
           <p className="text-xs text-primary-300">AISIN Corporation</p>
@@ -230,7 +230,7 @@ const Layout = () => {
                   className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
                 >
                   <Globe size={18} />
-                  {languageOptions.find((l) => l.code === language)?.label || 'English'}
+                  {languageOptions.find((l) => l.code === language)?.label || t('hdr_english')}
                   <ChevronDown size={16} />
                 </button>
                 {languageMenuOpen && (
@@ -299,7 +299,7 @@ const Layout = () => {
                             !notification.is_read ? 'bg-blue-50' : ''
                           }`}
                         >
-                          <p className="text-sm font-medium text-gray-800">{notification.title || 'Notification'}</p>
+                          <p className="text-sm font-medium text-gray-800">{notification.title || t('hdr_notification_fallback')}</p>
                           <p className="text-xs text-gray-600 mt-1">{notification.message || notification.body || ''}</p>
                         </button>
                       ))
@@ -320,7 +320,7 @@ const Layout = () => {
                     </span>
                   </div>
                   <span className="text-sm font-medium text-gray-700 hidden sm:block">
-                    Hi, {user?.name}
+                    {t('hdr_greeting')}, {user?.name}
                   </span>
                   <ChevronDown size={16} className="text-gray-400" />
                 </button>
