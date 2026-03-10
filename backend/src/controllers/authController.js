@@ -56,6 +56,46 @@ const decodeJwtPayload = (token) => {
   }
 };
 
+const extractMicrosoftAuthErrorMessage = (error) => {
+  const status = error?.response?.status;
+  const data = error?.response?.data;
+  const description = String(
+    data?.error_description ||
+    data?.error?.message ||
+    data?.message ||
+    error?.message ||
+    ''
+  ).trim();
+
+  const lowerDescription = description.toLowerCase();
+
+  if (lowerDescription.includes('aadsts53003') || lowerDescription.includes('53003')) {
+    return 'Microsoft sign-in is blocked by your organization policy. Contact your Microsoft Entra admin.';
+  }
+
+  if (lowerDescription.includes('redirect uri') || lowerDescription.includes('redirect_uri')) {
+    return 'Microsoft sign-in failed because the redirect URI does not match the app registration.';
+  }
+
+  if (lowerDescription.includes('invalid client secret') || lowerDescription.includes('client secret')) {
+    return 'Microsoft sign-in failed because the client secret is invalid or expired.';
+  }
+
+  if (lowerDescription.includes('application') && lowerDescription.includes('not found')) {
+    return 'Microsoft sign-in failed because the app registration could not be found in this tenant.';
+  }
+
+  if (status === 401) {
+    return 'Microsoft rejected the sign-in request. Check client secret, tenant ID, and redirect URI.';
+  }
+
+  if (description) {
+    return description.replace(/\s+/g, ' ').slice(0, 300);
+  }
+
+  return 'Microsoft sign-in failed';
+};
+
 const buildFrontendRedirect = (frontendUrl, params = {}) => {
   const redirectUrl = new URL('/auth/callback', frontendUrl);
   Object.entries(params).forEach(([key, value]) => {
@@ -323,7 +363,7 @@ exports.microsoftCallback = async (req, res) => {
   } catch (error) {
     logger.error('Microsoft callback error:', error);
     res.redirect(buildFrontendRedirect(frontendUrl, {
-      error: error.message || 'Microsoft sign-in failed'
+      error: extractMicrosoftAuthErrorMessage(error)
     }));
   }
 };
