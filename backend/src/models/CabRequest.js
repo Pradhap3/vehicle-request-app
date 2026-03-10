@@ -102,7 +102,8 @@ class CabRequest {
       pickupColumn: pickColumn(['departure_location', 'boarding_area', 'pickup_location']),
       dropColumn: pickColumn(['destination_location', 'dropping_area', 'drop_location', 'dropoff_location']),
       requestTimeColumn: pickColumn(['requested_time', 'pickup_time', 'created_at']),
-      assignmentColumn: pickColumn(['assigned_cab_id', 'cab_id'])
+      assignmentColumn: pickColumn(['assigned_cab_id', 'cab_id']),
+      plannedAssignmentColumn: pickColumn(['assigned_at'])
     };
 
     return this.schemaCache;
@@ -259,6 +260,12 @@ class CabRequest {
         insertValues.push('@travel_time');
       }
 
+      if (schema.plannedAssignmentColumn && requestData.assigned_at !== undefined) {
+        request.input('assigned_at', sql.DateTime, this.parseDateOrNull(requestData.assigned_at));
+        insertColumns.push(schema.plannedAssignmentColumn);
+        insertValues.push('@assigned_at');
+      }
+
       if (schema.hasColumn('status')) {
         request.input('status', sql.NVarChar(50), requestData.status || 'PENDING');
         insertColumns.push('status');
@@ -369,6 +376,10 @@ class CabRequest {
         bindFlexibleId(request, 'assigned_cab_id', requestData.assigned_cab_id ?? requestData.cab_id ?? null);
         updates.push(`${schema.assignmentColumn} = @assigned_cab_id`);
       }
+      if (schema.plannedAssignmentColumn && requestData.assigned_at !== undefined) {
+        request.input('assigned_at', sql.DateTime, this.parseDateOrNull(requestData.assigned_at));
+        updates.push(`${schema.plannedAssignmentColumn} = @assigned_at`);
+      }
       if (schema.hasColumn('number_of_people') && requestData.number_of_people !== undefined) {
         request.input('number_of_people', sql.Int, requestData.number_of_people);
         updates.push('number_of_people = @number_of_people');
@@ -420,12 +431,16 @@ class CabRequest {
       const request = pool.request();
       bindFlexibleId(request, 'id', requestId);
       request.input('status', sql.NVarChar(50), 'APPROVED');
+      if (schema.plannedAssignmentColumn) {
+        request.input('assigned_at', sql.DateTime, new Date());
+      }
       if (schema.assignmentColumn) {
         bindFlexibleId(request, 'cab_id', cabId);
       }
       const result = await request.query(`
           UPDATE cab_requests
           SET status = @status
+              ${schema.plannedAssignmentColumn ? `, ${schema.plannedAssignmentColumn} = @assigned_at` : ''}
               ${schema.assignmentColumn ? `, ${schema.assignmentColumn} = @cab_id` : ''}
           OUTPUT INSERTED.*
           WHERE id = @id

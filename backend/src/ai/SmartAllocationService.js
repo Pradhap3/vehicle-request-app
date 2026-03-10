@@ -38,7 +38,8 @@ class SmartAllocationService {
       columns,
       assignmentColumn: pick(['assigned_cab_id', 'cab_id']),
       requestTimeColumn: pick(['requested_time', 'pickup_time', 'created_at']),
-      requestTypeColumn: pick(['request_type'])
+      requestTypeColumn: pick(['request_type']),
+      plannedAssignmentColumn: pick(['assigned_at'])
     };
 
     return this.schemaCache;
@@ -134,6 +135,7 @@ class SmartAllocationService {
       if (options.onlyUpcomingWithinMinutes) {
         requestsReq.input('window_minutes', sql.Int, options.onlyUpcomingWithinMinutes);
       }
+      const assignmentWindowColumn = schema.plannedAssignmentColumn || schema.requestTimeColumn || 'created_at';
       const requestsResult = await requestsReq.query(`
           SELECT cr.*, e.name as employee_name
           FROM cab_requests cr
@@ -142,8 +144,8 @@ class SmartAllocationService {
             ${schema.requestTypeColumn ? `AND ${this.buildRecurringTypeClause(`cr.${schema.requestTypeColumn}`)}` : ''}
             ${
               options.onlyUpcomingWithinMinutes
-                ? `AND ${schema.requestTimeColumn || 'created_at'} >= GETDATE()
-                   AND ${schema.requestTimeColumn || 'created_at'} <= DATEADD(MINUTE, @window_minutes, GETDATE())`
+                ? `AND ${assignmentWindowColumn} IS NOT NULL
+                   AND ${assignmentWindowColumn} <= DATEADD(MINUTE, @window_minutes, GETDATE())`
                 : ''
             }
           ORDER BY cr.created_at
@@ -437,7 +439,7 @@ class SmartAllocationService {
     try {
       const pool = getPool();
       const schema = await this.getCabRequestSchema();
-      const timeCol = schema.requestTimeColumn || 'created_at';
+      const timeCol = schema.plannedAssignmentColumn || schema.requestTimeColumn || 'created_at';
       const routesResult = await pool.request()
         .input('window_minutes', sql.Int, windowMinutes)
         .query(`
@@ -447,7 +449,6 @@ class SmartAllocationService {
             AND status = 'PENDING'
             ${schema.requestTypeColumn ? `AND ${this.buildRecurringTypeClause(schema.requestTypeColumn)}` : ''}
             AND ${timeCol} IS NOT NULL
-            AND ${timeCol} >= GETDATE()
             AND ${timeCol} <= DATEADD(MINUTE, @window_minutes, GETDATE())
         `);
 

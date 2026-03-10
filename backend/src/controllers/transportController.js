@@ -112,6 +112,30 @@ const selectTodayTrip = (requests = []) => {
   return todayTrips[todayTrips.length - 1] || null;
 };
 
+const sameCoordinate = (a, b) =>
+  a && b
+  && toNumberOrNull(a.latitude) !== null
+  && toNumberOrNull(a.longitude) !== null
+  && toNumberOrNull(b.latitude) !== null
+  && toNumberOrNull(b.longitude) !== null
+  && Number(toNumberOrNull(a.latitude).toFixed(6)) === Number(toNumberOrNull(b.latitude).toFixed(6))
+  && Number(toNumberOrNull(a.longitude).toFixed(6)) === Number(toNumberOrNull(b.longitude).toFixed(6));
+
+const appendUniquePoint = (points, point) => {
+  if (!point || toNumberOrNull(point.latitude) === null || toNumberOrNull(point.longitude) === null) {
+    return;
+  }
+  const normalized = {
+    ...point,
+    latitude: toNumberOrNull(point.latitude),
+    longitude: toNumberOrNull(point.longitude)
+  };
+  if (points.length > 0 && sameCoordinate(points[points.length - 1], normalized)) {
+    return;
+  }
+  points.push(normalized);
+};
+
 exports.getMyProfile = async (req, res) => {
   try {
     const profile = await TransportProfile.findByEmployeeId(req.user.id);
@@ -291,6 +315,61 @@ exports.getMyTracking = async (req, res) => {
         }
       : officePoint;
 
+    const orderedStops = [...stops]
+      .filter((stop) => stop.latitude != null && stop.longitude != null)
+      .sort((a, b) => Number(a.stop_sequence || 0) - Number(b.stop_sequence || 0));
+
+    const routePath = [];
+    if (tripDirection === 'BOARDING_TO_OFFICE') {
+      appendUniquePoint(routePath, {
+        name: boardingPoint.name,
+        latitude: boardingPoint.latitude,
+        longitude: boardingPoint.longitude,
+        kind: 'BOARDING_POINT'
+      });
+      orderedStops.forEach((stop) => {
+        if (!selectedStop || Number(stop.stop_sequence || 0) >= Number(selectedStop.stop_sequence || 0)) {
+          appendUniquePoint(routePath, {
+            name: stop.stop_name,
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+            kind: 'ROUTE_STOP',
+            stop_sequence: stop.stop_sequence
+          });
+        }
+      });
+      appendUniquePoint(routePath, {
+        name: officePoint.name,
+        latitude: officePoint.latitude,
+        longitude: officePoint.longitude,
+        kind: 'OFFICE'
+      });
+    } else {
+      appendUniquePoint(routePath, {
+        name: officePoint.name,
+        latitude: officePoint.latitude,
+        longitude: officePoint.longitude,
+        kind: 'OFFICE'
+      });
+      orderedStops.forEach((stop) => {
+        if (!selectedStop || Number(stop.stop_sequence || 0) <= Number(selectedStop.stop_sequence || 0)) {
+          appendUniquePoint(routePath, {
+            name: stop.stop_name,
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+            kind: 'ROUTE_STOP',
+            stop_sequence: stop.stop_sequence
+          });
+        }
+      });
+      appendUniquePoint(routePath, {
+        name: destinationPoint.name,
+        latitude: destinationPoint.latitude,
+        longitude: destinationPoint.longitude,
+        kind: 'DESTINATION'
+      });
+    }
+
     const cabAtBoardingPoint = isNearPoint(cab, boardingPoint, BOARDING_RADIUS_KM);
     const cabAtOffice = isNearPoint(cab, officePoint, OFFICE_RADIUS_KM);
     const visitedBoardingPoint = hasVisitedPoint(history, boardingPoint, BOARDING_RADIUS_KM);
@@ -333,6 +412,7 @@ exports.getMyTracking = async (req, res) => {
         cab,
         profile,
         route: route ? { ...route, stops } : null,
+        routePath,
         history,
         officePoint,
         boardingPoint,

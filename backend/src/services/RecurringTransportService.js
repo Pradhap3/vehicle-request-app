@@ -7,10 +7,10 @@ class RecurringTransportService {
   static recurringLegTypes = ['RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
   static officeKeywords = ['aisin', 'narasapura'];
   static shiftRules = {
-    SHIFT_1: { inboundAt: '05:30:00', outboundAt: '14:50:00' },
-    SHIFT_2: { inboundAt: '14:30:00', outboundAt: '23:15:00' },
-    SHIFT_3: { inboundAt: '23:10:00', outboundAt: '05:30:00' },
-    GENERAL: { inboundAt: '08:00:00', outboundAt: '17:50:00' }
+    SHIFT_1: { inboundAt: '05:30:00', outboundAt: '14:50:00', inboundAssignAt: '03:30:00', outboundAssignLeadMinutes: 30 },
+    SHIFT_2: { inboundAt: '14:30:00', outboundAt: '23:15:00', inboundAssignAt: '12:00:00', outboundAssignLeadMinutes: 30 },
+    SHIFT_3: { inboundAt: '23:10:00', outboundAt: '05:30:00', inboundAssignAt: '20:30:00', outboundAssignLeadMinutes: 30 },
+    GENERAL: { inboundAt: '08:00:00', outboundAt: '17:50:00', inboundAssignAt: '05:00:00', outboundAssignLeadMinutes: 30 }
   };
 
   static toIsoDate(targetDate = new Date()) {
@@ -78,6 +78,11 @@ class RecurringTransportService {
       dateKey,
       rules.outboundAt || '17:50:00'
     );
+    const inboundAssignAt = this.combineDateAndTime(
+      dateKey,
+      rules.inboundAssignAt || '05:00:00'
+    );
+    const outboundAssignAt = new Date(outboundTime.getTime() - ((rules.outboundAssignLeadMinutes || 30) * 60000));
 
     return [
       {
@@ -86,6 +91,7 @@ class RecurringTransportService {
         title: 'Daily pickup generated',
         message: `Your pickup trip for ${dateKey} has been generated automatically.`,
         requestedAt: inboundTime,
+        assignAt: inboundAssignAt,
         pickupLocation: locations.inboundPickup,
         dropLocation: locations.inboundDrop
       },
@@ -95,6 +101,7 @@ class RecurringTransportService {
         title: 'Daily drop generated',
         message: `Your drop trip for ${dateKey} has been generated automatically.`,
         requestedAt: outboundTime,
+        assignAt: outboundAssignAt,
         pickupLocation: locations.outboundPickup,
         dropLocation: locations.outboundDrop
       }
@@ -169,6 +176,7 @@ class RecurringTransportService {
             pickup_time: tripTemplate.requestedAt,
             requested_time: tripTemplate.requestedAt,
             travel_time: tripTemplate.requestedAt,
+            assigned_at: tripTemplate.assignAt,
             departure_location: tripTemplate.pickupLocation,
             destination_location: tripTemplate.dropLocation,
             pickup_location: tripTemplate.pickupLocation,

@@ -172,6 +172,13 @@ const EmployeeTrackingPage = () => {
     [tracking?.route?.stops]
   );
 
+  const routePathPoints = useMemo(
+    () => (tracking?.routePath || [])
+      .filter((point) => point.latitude != null && point.longitude != null)
+      .map((point) => [point.latitude, point.longitude]),
+    [tracking?.routePath]
+  );
+
   const pathPoints = useMemo(
     () => (tracking?.history || [])
       .filter((point) => point.latitude != null && point.longitude != null)
@@ -190,30 +197,23 @@ const EmployeeTrackingPage = () => {
     if (tracking?.officePoint?.latitude != null && tracking?.officePoint?.longitude != null) {
       points.push([tracking.officePoint.latitude, tracking.officePoint.longitude]);
     }
+    if (tracking?.destinationPoint?.latitude != null && tracking?.destinationPoint?.longitude != null) {
+      points.push([tracking.destinationPoint.latitude, tracking.destinationPoint.longitude]);
+    }
+    routePathPoints.forEach((point) => points.push(point));
     routeStopsWithCoords.forEach((stop) => points.push([stop.latitude, stop.longitude]));
     pathPoints.forEach((point) => points.push(point));
     return points;
-  }, [currentCab, pathPoints, routeStopsWithCoords, tracking?.boardingPoint, tracking?.officePoint]);
+  }, [currentCab, pathPoints, routePathPoints, routeStopsWithCoords, tracking?.boardingPoint, tracking?.officePoint, tracking?.destinationPoint]);
 
-  const routeGuidePoints = useMemo(() => {
-    const points = [];
-    if (tracking?.boardingPoint?.latitude != null && tracking?.boardingPoint?.longitude != null) {
-      points.push([tracking.boardingPoint.latitude, tracking.boardingPoint.longitude]);
+  const nextStop = useMemo(() => {
+    const path = tracking?.routePath || [];
+    if (!path.length) return null;
+    if (tracking?.tripDirection === 'BOARDING_TO_OFFICE') {
+      return path.find((point) => point.kind === 'ROUTE_STOP' || point.kind === 'OFFICE') || null;
     }
-    routeStopsWithCoords.forEach((stop) => {
-      if (
-        !tracking?.boardingPoint ||
-        Number(stop.latitude) !== Number(tracking.boardingPoint.latitude) ||
-        Number(stop.longitude) !== Number(tracking.boardingPoint.longitude)
-      ) {
-        points.push([stop.latitude, stop.longitude]);
-      }
-    });
-    if (tracking?.officePoint?.latitude != null && tracking?.officePoint?.longitude != null) {
-      points.push([tracking.officePoint.latitude, tracking.officePoint.longitude]);
-    }
-    return points;
-  }, [routeStopsWithCoords, tracking?.boardingPoint, tracking?.officePoint]);
+    return path.find((point) => point.kind === 'ROUTE_STOP' || point.kind === 'DESTINATION') || null;
+  }, [tracking?.routePath, tracking?.tripDirection]);
 
   const fallbackCenter = mapBounds[0] || [13.2947, 78.2172];
 
@@ -276,8 +276,8 @@ const EmployeeTrackingPage = () => {
                 <Polyline positions={pathPoints} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.7 }} />
               )}
 
-              {routeGuidePoints.length > 1 && (
-                <Polyline positions={routeGuidePoints} pathOptions={{ color: '#ef4444', weight: 5, opacity: 0.85 }} />
+              {routePathPoints.length > 1 && (
+                <Polyline positions={routePathPoints} pathOptions={{ color: '#ef4444', weight: 5, opacity: 0.85 }} />
               )}
 
               {tracking?.officePoint?.latitude != null && tracking?.officePoint?.longitude != null && (
@@ -301,6 +301,21 @@ const EmployeeTrackingPage = () => {
                   </Popup>
                 </Marker>
               )}
+
+              {tracking?.destinationPoint?.latitude != null &&
+                tracking?.destinationPoint?.longitude != null &&
+                !(tracking?.tripDirection === 'BOARDING_TO_OFFICE'
+                  && tracking?.officePoint?.latitude === tracking?.destinationPoint?.latitude
+                  && tracking?.officePoint?.longitude === tracking?.destinationPoint?.longitude) && (
+                  <Marker position={[tracking.destinationPoint.latitude, tracking.destinationPoint.longitude]} icon={stopIcon}>
+                    <Popup>
+                      <div className="min-w-[180px]">
+                        <p className="font-semibold text-gray-800">{tracking.destinationPoint.name}</p>
+                        <p className="text-sm text-gray-600">Destination</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                )}
 
               {routeStopsWithCoords.map((stop) => (
                 <Marker key={stop.id} position={[stop.latitude, stop.longitude]} icon={stopIcon}>
@@ -363,6 +378,9 @@ const EmployeeTrackingPage = () => {
                 )}
                 <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-blue-700">
                   <p className="font-medium">{getProgressLabel(tracking.routeProgress)}</p>
+                  {nextStop?.name && (
+                    <p className="text-xs mt-1">Next stop: {nextStop.name}</p>
+                  )}
                   {tracking.distances?.toBoardingKm != null && (
                     <p className="text-xs mt-1">Distance to boarding point: {tracking.distances.toBoardingKm} km</p>
                   )}
