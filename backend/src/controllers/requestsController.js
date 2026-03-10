@@ -8,12 +8,15 @@ const Cab = require('../models/Cab');
 const AuditLog = require('../models/AuditLog');
 const RecurringTransportService = require('../services/RecurringTransportService');
 const User = require('../models/User');
+const TransportProfile = require('../models/TransportProfile');
 const logger = require('../utils/logger');
 
 const BOOKING_MIN_ADVANCE_MINUTES = parseInt(process.env.BOOKING_MIN_ADVANCE_MINUTES || '60', 10);
 const REQUEST_CONFLICT_WINDOW_MINUTES = parseInt(process.env.REQUEST_CONFLICT_WINDOW_MINUTES || '180', 10);
 const REQUIRE_CALL_ATTEMPT_FOR_NO_SHOW = String(process.env.REQUIRE_CALL_ATTEMPT_FOR_NO_SHOW || 'true') === 'true';
 const CALL_ATTEMPT_WINDOW_MINUTES = parseInt(process.env.CALL_ATTEMPT_WINDOW_MINUTES || '15', 10);
+const SPECIAL_APPROVAL_TYPES = new Set(['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE', 'SHIFT_CHANGE']);
+const CAB_ASSIGNABLE_SPECIAL_TYPES = new Set(['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE']);
 const BOARDING_ALLOWED_STATUSES = new Set([
   'APPROVED',
   'ASSIGNED',
@@ -27,6 +30,12 @@ const BOARDING_ALLOWED_STATUSES = new Set([
 
 const normalizeStatus = (status) =>
   String(status || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+const normalizeRequestType = (requestType) =>
+  String(requestType || 'ADHOC')
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, '_');
@@ -124,6 +133,14 @@ const notifyAdminsForApproval = async (req, request, requestType) => {
       data: { request_id: request.id, route: '/requests' }
     });
   }
+};
+
+const refreshRecurringTripsForShiftApproval = async (employeeId, effectiveFrom) => {
+  const date = effectiveFrom ? new Date(effectiveFrom) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return;
+  }
+  await RecurringTransportService.ensureDailyTrips(date);
 };
 
 // Get all requests
@@ -318,7 +335,7 @@ exports.createRequest = async (req, res) => {
       data: { request_id: request.id, route_id: request.route_id, route: '/requests' }
     });
 
-    if (['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE'].includes(String(request_type || 'ADHOC').toUpperCase())) {
+    if (SPECIAL_APPROVAL_TYPES.has(normalizeRequestType(request_type || 'ADHOC'))) {
       await notifyAdminsForApproval(req, request, request_type || 'ADHOC');
     }
 
@@ -511,6 +528,28 @@ exports.assignCab = async (req, res) => {
       });
     }
 
+    const existingRequest = await CabRequest.findById(req.params.id);
+    if (!existingRequest) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+
+    const requestType = normalizeRequestType(existingRequest.request_type);
+    if (SPECIAL_APPROVAL_TYPES.has(requestType) && existingRequest.status !== 'APPROVED') {
+      return res.status(400).json({
+        success: false,
+        error: 'Special requests must be approved before a cab can be assigned.'
+      });
+    }
+    if (!CAB_ASSIGNABLE_SPECIAL_TYPES.has(requestType) && requestType === 'SHIFT_CHANGE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Shift change requests do not require cab assignment.'
+      });
+    }
+
     const request = await CabRequest.assignCab(req.params.id, cab_id);
     
     if (!request) {
@@ -554,6 +593,55 @@ exports.assignCab = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to assign cab'
+    });
+  }
+};
+
+exports.approveRequest = async (req, res) => {
+  try {
+    const request = await CabRequest.findById(req.params.id);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+
+    const requestType = normalizeRequestType(request.request_type);
+    if (!SPECIAL_APPROVAL_TYPES.has(requestType)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Only special requests require explicit approval.'
+      });
+    }
+
+    const updatedRequest = await CabRequest.update(req.params.id, { status: 'APPROVED' });
+
+    if (requestType === 'SHIFT_CHANGE') {
+      const approvedProfile = await TransportProfile.approvePendingShift(request.employee_id);
+      await refreshRecurringTripsForShiftApproval(
+        request.employee_id,
+        approvedProfile?.effective_from || new Date()
+      );
+    }
+
+    await emitNotification(req, request.employee_id, {
+      type: 'REQUEST_APPROVED',
+      title: 'Request Approved',
+      message: `${requestType.replace(/_/g, ' ')} request has been approved by HR/Admin.`,
+      data: { request_id: request.id, route: '/requests' }
+    });
+
+    res.json({
+      success: true,
+      data: updatedRequest,
+      message: 'Request approved successfully'
+    });
+  } catch (error) {
+    logger.error('Approve request error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to approve request'
     });
   }
 };

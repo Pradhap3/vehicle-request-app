@@ -67,6 +67,30 @@ BEGIN TRY
       ON employee_transport_profiles(employee_id, is_active);
   END;
 
+  IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_code')
+  BEGIN
+    ALTER TABLE employee_transport_profiles
+      ADD pending_shift_code NVARCHAR(40) NULL;
+  END;
+
+  IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_effective_from')
+  BEGIN
+    ALTER TABLE employee_transport_profiles
+      ADD pending_shift_effective_from DATE NULL;
+  END;
+
+  IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_effective_to')
+  BEGIN
+    ALTER TABLE employee_transport_profiles
+      ADD pending_shift_effective_to DATE NULL;
+  END;
+
+  IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_requested_at')
+  BEGIN
+    ALTER TABLE employee_transport_profiles
+      ADD pending_shift_requested_at DATETIME NULL;
+  END;
+
   IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'auth_provider')
   BEGIN
     ALTER TABLE users

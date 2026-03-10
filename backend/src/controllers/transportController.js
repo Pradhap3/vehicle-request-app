@@ -4,6 +4,8 @@ const RouteStop = require('../models/RouteStop');
 const RecurringTransportService = require('../services/RecurringTransportService');
 const CabRequest = require('../models/CabRequest');
 const Cab = require('../models/Cab');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
 const logger = require('../utils/logger');
 
 const OFFICE_FALLBACK = {
@@ -14,6 +16,7 @@ const OFFICE_FALLBACK = {
 
 const OFFICE_RADIUS_KM = 0.5;
 const BOARDING_RADIUS_KM = 0.25;
+const ACTIVE_TRIP_STATUSES = ['APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'COMPLETED'];
 
 const toNumberOrNull = (value) => {
   const num = Number(value);
@@ -66,6 +69,49 @@ const getOfficePoint = () => ({
   longitude: toNumberOrNull(process.env.OFFICE_LONGITUDE) ?? OFFICE_FALLBACK.longitude
 });
 
+const emitUserNotification = async (req, userId, payload) => {
+  const created = await Notification.create({
+    user_id: userId,
+    type: payload.type || 'INFO',
+    title: payload.title || 'Notification',
+    message: payload.message || '',
+    data: payload.data || null
+  });
+
+  if (req.io && userId !== null && userId !== undefined) {
+    req.io.to(`user_${userId}`).emit('notification', {
+      id: created?.id,
+      ...payload,
+      created_at: new Date().toISOString()
+    });
+  }
+};
+
+const normalizeRequestType = (requestType) =>
+  String(requestType || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+const selectTodayTrip = (requests = []) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+  const todayTrips = requests
+    .filter((row) => {
+      const tripDate = row.requested_time ? new Date(row.requested_time).toISOString().slice(0, 10) : null;
+      return tripDate === today && ACTIVE_TRIP_STATUSES.includes(row.status);
+    })
+    .sort((a, b) => new Date(a.requested_time || a.pickup_time || 0) - new Date(b.requested_time || b.pickup_time || 0));
+
+  const inProgress = todayTrips.find((row) => row.status === 'IN_PROGRESS');
+  if (inProgress) return inProgress;
+
+  const upcoming = todayTrips.find((row) => new Date(row.requested_time || row.pickup_time || 0).getTime() >= now);
+  if (upcoming) return upcoming;
+
+  return todayTrips[todayTrips.length - 1] || null;
+};
+
 exports.getMyProfile = async (req, res) => {
   try {
     const profile = await TransportProfile.findByEmployeeId(req.user.id);
@@ -91,6 +137,71 @@ exports.getMyProfile = async (req, res) => {
 
 exports.upsertMyProfile = async (req, res) => {
   try {
+    const currentProfile = await TransportProfile.findByEmployeeId(req.user.id);
+    const requestedShift = req.body.shift_code || null;
+    const currentShift = currentProfile?.shift_code || null;
+    const shiftChanged = currentProfile && requestedShift && requestedShift !== currentShift;
+
+    if (shiftChanged) {
+      if (currentProfile.pending_shift_code) {
+        return res.status(400).json({
+          success: false,
+          error: 'A shift change request is already pending approval.'
+        });
+      }
+
+      const pendingProfile = await TransportProfile.requestShiftChange(req.user.id, {
+        shift_code: requestedShift,
+        effective_from: req.body.effective_from || currentProfile.effective_from || null,
+        effective_to: req.body.effective_to || currentProfile.effective_to || null
+      });
+
+      const shiftRequest = await CabRequest.create({
+        employee_id: req.user.id,
+        route_id: currentProfile.route_id || req.body.route_id || null,
+        pickup_time: new Date(),
+        requested_time: new Date(),
+        travel_time: new Date(),
+        departure_location: currentProfile.pickup_location || currentProfile.stop_name || 'Employee boarding point',
+        destination_location: currentProfile.drop_location || 'AISIN Karnataka Limited, Narasapura Industrial Area',
+        pickup_location: currentProfile.pickup_location || currentProfile.stop_name || 'Employee boarding point',
+        drop_location: currentProfile.drop_location || 'AISIN Karnataka Limited, Narasapura Industrial Area',
+        boarding_area: currentProfile.pickup_location || currentProfile.stop_name || 'Employee boarding point',
+        dropping_area: currentProfile.drop_location || 'AISIN Karnataka Limited, Narasapura Industrial Area',
+        priority: 'NORMAL',
+        status: 'PENDING',
+        number_of_people: 1,
+        request_type: 'SHIFT_CHANGE'
+      });
+
+      await emitUserNotification(req, req.user.id, {
+        type: 'SHIFT_CHANGE_REQUESTED',
+        title: 'Shift change submitted',
+        message: 'Your shift change request is waiting for HR/Admin approval. Your current shift remains active until approval.',
+        data: { request_id: shiftRequest?.id, route: '/employee' }
+      });
+
+      const admins = (await User.findAll()).filter((user) => ['HR_ADMIN', 'ADMIN'].includes(user.role));
+      for (const admin of admins) {
+        await emitUserNotification(req, admin.id, {
+          type: 'REQUEST_APPROVAL_REQUIRED',
+          title: 'Shift Change Approval Required',
+          message: `Shift change request submitted by employee ${req.user.id}. Review and approve from Requests.`,
+          data: { request_id: shiftRequest?.id, route: '/requests' }
+        });
+      }
+
+      const enrichedPending = pendingProfile?.route_id
+        ? { ...pendingProfile, stops: await RouteStop.findByRouteId(pendingProfile.route_id) }
+        : pendingProfile;
+
+      return res.json({
+        success: true,
+        data: enrichedPending,
+        message: 'Shift change request submitted for approval'
+      });
+    }
+
     const profile = await TransportProfile.upsert(req.user.id, req.body);
     const enriched = profile?.route_id ? { ...profile, stops: await RouteStop.findByRouteId(profile.route_id) } : profile;
     res.json({
@@ -111,11 +222,7 @@ exports.getMyTodayTrip = async (req, res) => {
   try {
     await RecurringTransportService.ensureDailyTrips(new Date(), { io: req.io });
     const requests = await CabRequest.getByEmployeeId(req.user.id);
-    const today = new Date().toISOString().slice(0, 10);
-    const trip = requests.find((row) => {
-      const tripDate = row.requested_time ? new Date(row.requested_time).toISOString().slice(0, 10) : null;
-      return tripDate === today && ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(row.status);
-    }) || null;
+    const trip = selectTodayTrip(requests);
 
     res.json({
       success: true,
@@ -134,11 +241,7 @@ exports.getMyTracking = async (req, res) => {
   try {
     await RecurringTransportService.ensureDailyTrips(new Date(), { io: req.io });
     const requests = await CabRequest.getByEmployeeId(req.user.id);
-    const today = new Date().toISOString().slice(0, 10);
-    const trip = requests.find((row) => {
-      const tripDate = row.requested_time ? new Date(row.requested_time).toISOString().slice(0, 10) : null;
-      return tripDate === today && ['APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'PENDING'].includes(row.status);
-    }) || null;
+    const trip = selectTodayTrip(requests);
 
     if (!trip) {
       return res.json({

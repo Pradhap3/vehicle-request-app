@@ -164,6 +164,7 @@ export const requestAPI = {
   create: (data) => api.post('/api/requests', normalizeRequestDatePayload(data)),
   update: (id, data) => api.put(`/api/requests/${id}`, normalizeRequestDatePayload(data)),
   delete: (id) => api.delete(`/api/requests/${id}`),
+  approve: (id) => api.post(`/api/requests/${id}/approve`),
   assignCab: (id, data) => api.post(`/api/requests/${id}/assign`, data),
   cancel: (id) => api.post(`/api/requests/${id}/cancel`),
   markBoarded: (id, data) => api.post(`/api/requests/${id}/board`, data),

@@ -289,6 +289,12 @@ router.post('/requests/:id/assign',
   requestsController.assignCab
 );
 
+router.post('/requests/:id/approve',
+  authenticate,
+  authorize('HR_ADMIN', 'ADMIN'),
+  requestsController.approveRequest
+);
+
 router.post('/requests/:id/cancel', 
   authenticate, 
   requestsController.cancelRequest

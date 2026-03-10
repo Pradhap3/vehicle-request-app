@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 class SmartAllocationService {
   static schemaCache = null;
   static driverRoutesAvailable = null;
+  static recurringRequestTypes = ['RECURRING', 'RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
 
   static async hasDriverRoutesTable() {
     if (this.driverRoutesAvailable !== null) return this.driverRoutesAvailable;
@@ -58,6 +59,11 @@ class SmartAllocationService {
       return;
     }
     request.input(paramName, sql.NVarChar(255), normalized);
+  }
+
+  static buildRecurringTypeClause(columnName) {
+    const values = this.recurringRequestTypes.map((type) => `'${type}'`).join(', ');
+    return `${columnName} IN (${values})`;
   }
   
   // Get capacity analytics - simplified without pickup_time/cab_id columns
@@ -133,7 +139,7 @@ class SmartAllocationService {
           FROM cab_requests cr
           INNER JOIN users e ON cr.employee_id = e.id
           WHERE cr.route_id = @route_id AND cr.status = 'PENDING'
-            ${schema.requestTypeColumn ? `AND cr.${schema.requestTypeColumn} = 'RECURRING'` : ''}
+            ${schema.requestTypeColumn ? `AND ${this.buildRecurringTypeClause(`cr.${schema.requestTypeColumn}`)}` : ''}
             ${
               options.onlyUpcomingWithinMinutes
                 ? `AND ${schema.requestTimeColumn || 'created_at'} >= GETDATE()
@@ -348,7 +354,7 @@ class SmartAllocationService {
         FROM cab_requests
         WHERE route_id = @route_id
           AND status = 'PENDING'
-          ${schema.requestTypeColumn ? `AND ${schema.requestTypeColumn} = 'RECURRING'` : ''}
+          ${schema.requestTypeColumn ? `AND ${this.buildRecurringTypeClause(schema.requestTypeColumn)}` : ''}
           AND CAST(${schema.requestTimeColumn || 'created_at'} AS DATE) = @target_date
         ORDER BY created_at ASC
       `);
@@ -439,7 +445,7 @@ class SmartAllocationService {
           FROM cab_requests
           WHERE route_id IS NOT NULL
             AND status = 'PENDING'
-            ${schema.requestTypeColumn ? `AND ${schema.requestTypeColumn} = 'RECURRING'` : ''}
+            ${schema.requestTypeColumn ? `AND ${this.buildRecurringTypeClause(schema.requestTypeColumn)}` : ''}
             AND ${timeCol} IS NOT NULL
             AND ${timeCol} >= GETDATE()
             AND ${timeCol} <= DATEADD(MINUTE, @window_minutes, GETDATE())

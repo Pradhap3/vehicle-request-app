@@ -255,6 +255,8 @@ const RequestsPage = () => {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const specialApprovalTypes = new Set(['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE', 'SHIFT_CHANGE']);
+  const cabAssignableSpecialTypes = new Set(['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE']);
 
   const fetchData = async () => {
     try {
@@ -316,6 +318,19 @@ const RequestsPage = () => {
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to assign cab');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApproveRequest = async (requestId) => {
+    try {
+      setActionLoading(true);
+      await requestAPI.approve(requestId);
+      toast.success('Request approved successfully');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.error || error.response?.data?.message || 'Failed to approve request');
     } finally {
       setActionLoading(false);
     }
@@ -469,6 +484,12 @@ const RequestsPage = () => {
                     {request.employee_name}
                     <span className="text-gray-400">•</span>
                     <span className="text-gray-600">{request.route_name}</span>
+                    {request.request_type && (
+                      <>
+                        <span className="text-gray-400">•</span>
+                        <span className="text-gray-600">{String(request.request_type).replace(/_/g, ' ')}</span>
+                      </>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
@@ -489,15 +510,27 @@ const RequestsPage = () => {
 
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Admin Actions */}
-                  {isAdmin && request.status === 'PENDING' && (
+                  {isAdmin && request.status === 'PENDING' && specialApprovalTypes.has(request.request_type) && (
                     <button
-                      onClick={() => openAssignModal(request)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-sm hover:bg-primary-600"
+                      onClick={() => handleApproveRequest(request.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
                     >
-                      <Car size={14} />
-                      Assign Cab
+                      <CheckCircle size={14} />
+                      Approve
                     </button>
                   )}
+
+                  {isAdmin &&
+                    ((request.status === 'PENDING' && !specialApprovalTypes.has(request.request_type)) ||
+                      (request.status === 'APPROVED' && cabAssignableSpecialTypes.has(request.request_type))) && (
+                      <button
+                        onClick={() => openAssignModal(request)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-sm hover:bg-primary-600"
+                      >
+                        <Car size={14} />
+                        Assign Cab
+                      </button>
+                    )}
 
                   {/* Boarding / Drop / No-show are driver-only actions from driver dashboard */}
 

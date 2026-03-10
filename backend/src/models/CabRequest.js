@@ -29,6 +29,7 @@ const bindFlexibleId = (request, paramName, id) => {
 
 class CabRequest {
   static schemaCache = null;
+  static recurringTypes = ['RECURRING', 'RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
 
   static parseDateOrNull(value) {
     if (!value) return null;
@@ -667,7 +668,7 @@ class CabRequest {
     }
   }
 
-  static async findActiveTripForEmployeeOnDate(employeeId, targetDate) {
+  static async findActiveTripForEmployeeOnDate(employeeId, targetDate, requestTypes = null) {
     try {
       const schema = await this.getCabRequestSchema();
       const timeCol = schema.requestTimeColumn || 'created_at';
@@ -675,11 +676,24 @@ class CabRequest {
       const request = pool.request();
       bindFlexibleId(request, 'employee_id', employeeId);
       request.input('target_date', sql.Date, targetDate);
+      let requestTypeClause = '';
+
+      if (schema.hasColumn('request_type')) {
+        const types = Array.isArray(requestTypes) && requestTypes.length > 0 ? requestTypes : null;
+        if (types) {
+          const placeholders = types.map((_, index) => `@request_type_${index}`);
+          types.forEach((type, index) => {
+            request.input(`request_type_${index}`, sql.NVarChar(40), type);
+          });
+          requestTypeClause = `AND request_type IN (${placeholders.join(', ')})`;
+        }
+      }
 
       const result = await request.query(`
         SELECT *
         FROM cab_requests
         WHERE employee_id = @employee_id
+          ${requestTypeClause}
           AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')
           AND ${timeCol} IS NOT NULL
           AND CAST(${timeCol} AS DATE) = @target_date
@@ -693,7 +707,7 @@ class CabRequest {
     }
   }
 
-  static async findRecurringTripsForEmployeeOnDate(employeeId, targetDate) {
+  static async findRecurringTripsForEmployeeOnDate(employeeId, targetDate, requestTypes = null) {
     try {
       const schema = await this.getCabRequestSchema();
       const timeCol = schema.requestTimeColumn || 'created_at';
@@ -702,9 +716,17 @@ class CabRequest {
       bindFlexibleId(request, 'employee_id', employeeId);
       request.input('target_date', sql.Date, targetDate);
 
-      const requestTypeClause = schema.hasColumn('request_type')
-        ? `AND request_type = 'RECURRING'`
-        : '';
+      let requestTypeClause = '';
+      if (schema.hasColumn('request_type')) {
+        const types = Array.isArray(requestTypes) && requestTypes.length > 0
+          ? requestTypes
+          : this.recurringTypes;
+        const placeholders = types.map((_, index) => `@request_type_${index}`);
+        types.forEach((type, index) => {
+          request.input(`request_type_${index}`, sql.NVarChar(40), type);
+        });
+        requestTypeClause = `AND request_type IN (${placeholders.join(', ')})`;
+      }
 
       const result = await request.query(`
         SELECT *

@@ -18,6 +18,7 @@ class TransportProfile {
     if (!record) return record;
     return {
       ...record,
+      has_pending_shift_change: Boolean(record.pending_shift_code),
       auto_generate: Boolean(record.auto_generate),
       is_active: Boolean(record.is_active)
     };
@@ -148,6 +149,73 @@ class TransportProfile {
       `);
     } catch (error) {
       logger.error('Error marking transport profile generated:', error);
+    }
+  }
+
+  static async requestShiftChange(employeeId, shiftData = {}) {
+    try {
+      const existing = await this.findByEmployeeId(employeeId);
+      if (!existing) {
+        throw new Error('Recurring transport profile not found');
+      }
+
+      const pool = getPool();
+      const request = pool.request();
+      bindId(request, 'id', existing.id);
+      request
+        .input('pending_shift_code', sql.NVarChar(40), shiftData.shift_code || null)
+        .input('pending_shift_effective_from', sql.Date, shiftData.effective_from || existing.effective_from || null)
+        .input('pending_shift_effective_to', sql.Date, shiftData.effective_to || existing.effective_to || null);
+
+      const result = await request.query(`
+        UPDATE employee_transport_profiles
+        SET pending_shift_code = @pending_shift_code,
+            pending_shift_effective_from = @pending_shift_effective_from,
+            pending_shift_effective_to = @pending_shift_effective_to,
+            pending_shift_requested_at = GETDATE(),
+            updated_at = GETDATE()
+        OUTPUT INSERTED.*
+        WHERE id = @id
+      `);
+
+      return this.normalize(result.recordset[0]);
+    } catch (error) {
+      logger.error('Error requesting shift change:', error);
+      throw error;
+    }
+  }
+
+  static async approvePendingShift(employeeId) {
+    try {
+      const existing = await this.findByEmployeeId(employeeId);
+      if (!existing) {
+        throw new Error('Recurring transport profile not found');
+      }
+      if (!existing.pending_shift_code) {
+        return existing;
+      }
+
+      const pool = getPool();
+      const request = pool.request();
+      bindId(request, 'id', existing.id);
+      const result = await request.query(`
+        UPDATE employee_transport_profiles
+        SET shift_code = pending_shift_code,
+            effective_from = COALESCE(pending_shift_effective_from, effective_from),
+            effective_to = pending_shift_effective_to,
+            pending_shift_code = NULL,
+            pending_shift_effective_from = NULL,
+            pending_shift_effective_to = NULL,
+            pending_shift_requested_at = NULL,
+            updated_at = GETDATE()
+        OUTPUT INSERTED.*
+        WHERE id = @id
+      `);
+
+      return this.normalize(result.recordset[0]);
+    } catch (error) {
+      logger.error('Error approving pending shift:', error);
+      throw error;
     }
   }
 }

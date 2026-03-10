@@ -49,6 +49,18 @@ const alterations = [
   `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_transport_profiles_employee_active')
    CREATE INDEX idx_transport_profiles_employee_active ON employee_transport_profiles(employee_id, is_active)`,
 
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_code')
+   ALTER TABLE employee_transport_profiles ADD pending_shift_code NVARCHAR(40) NULL`,
+
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_effective_from')
+   ALTER TABLE employee_transport_profiles ADD pending_shift_effective_from DATE NULL`,
+
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_effective_to')
+   ALTER TABLE employee_transport_profiles ADD pending_shift_effective_to DATE NULL`,
+
+  `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('employee_transport_profiles') AND name = 'pending_shift_requested_at')
+   ALTER TABLE employee_transport_profiles ADD pending_shift_requested_at DATETIME NULL`,
+
   // Notifications table - add missing columns
   `IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'user_id')
    ALTER TABLE notifications ADD user_id NVARCHAR(255)`,
