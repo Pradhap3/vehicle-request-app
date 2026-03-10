@@ -47,6 +47,16 @@ export default function EmployeeDashboardPage() {
   });
   const [profileForm, setProfileForm] = useState(emptyProfileForm());
 
+  const formatShiftLabel = (value) => {
+    const normalized = String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (!normalized) return 'Not set';
+    if (normalized === 'GENERAL' || normalized === 'G') return 'General';
+    if (normalized === 'SHIFT_1' || normalized === 'SHIFT1' || normalized === 'A') return 'Shift 1';
+    if (normalized === 'SHIFT_2' || normalized === 'SHIFT2' || normalized === 'B') return 'Shift 2';
+    if (normalized === 'SHIFT_3' || normalized === 'SHIFT3' || normalized === 'C') return 'Shift 3';
+    return value;
+  };
+
   const selectedProfileStop = profileStops.find((stop) => String(stop.stop_sequence) === String(profileForm.stop_sequence))
     || profileStops.find((stop) => stop.stop_name === profileForm.stop_name)
     || null;
@@ -273,7 +283,7 @@ export default function EmployeeDashboardPage() {
             {transportProfile ? (
               <div className="space-y-1 text-sm text-gray-600">
                 <p><strong>Route:</strong> {transportProfile.route_name || 'Not assigned yet'}</p>
-                <p><strong>Shift:</strong> {transportProfile.shift_code || 'Not set'}</p>
+                <p><strong>{t('profile_shift')}:</strong> {formatShiftLabel(transportProfile.shift_code)}</p>
                 <p><strong>Pickup:</strong> {transportProfile.pickup_location || 'Not set'}</p>
                 <p><strong>Drop:</strong> {transportProfile.drop_location || 'Not set'}</p>
                 <p><strong>Stop:</strong> {transportProfile.stop_name || 'Not set'}{transportProfile.stop_sequence ? ` (Seq ${transportProfile.stop_sequence})` : ''}</p>

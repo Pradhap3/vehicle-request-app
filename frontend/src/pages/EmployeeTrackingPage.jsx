@@ -6,6 +6,7 @@ import { AlertTriangle, Car, Clock, MapPin, Navigation, Phone, RefreshCw, Route 
 import toast from 'react-hot-toast';
 import { transportAPI } from '../services/api';
 import { useSocket } from '../context/SocketContext';
+import { useLanguage } from '../context/LanguageContext';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -111,28 +112,29 @@ const formatTimestamp = (value) => {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-const getProgressLabel = (value) => {
+const getProgressLabel = (value, t) => {
   switch (value) {
     case 'AT_BOARDING_POINT':
-      return 'Cab has reached your boarding point';
+      return t('tracking_progress_at_boarding');
     case 'LEFT_BOARDING_POINT':
-      return 'Cab has left the boarding point';
+      return t('tracking_progress_left_boarding');
     case 'COMING_TO_BOARDING_POINT':
-      return 'Cab is coming to your boarding point';
+      return t('tracking_progress_coming_boarding');
     case 'AT_OFFICE_BOARDING_POINT':
-      return 'Cab is at AISIN boarding point';
+      return t('tracking_progress_at_office_boarding');
     case 'LEFT_OFFICE_BOARDING_POINT':
-      return 'Cab has left AISIN boarding point';
+      return t('tracking_progress_left_office_boarding');
     case 'COMING_TO_OFFICE_BOARDING_POINT':
-      return 'Cab is coming to AISIN boarding point';
+      return t('tracking_progress_coming_office_boarding');
     case 'AT_OFFICE':
-      return 'Cab is currently at AISIN office';
+      return t('tracking_progress_at_office');
     default:
-      return 'Waiting for cab assignment';
+      return t('tracking_waiting_assignment');
   }
 };
 
 const EmployeeTrackingPage = () => {
+  const { t } = useLanguage();
   const { driverLocations } = useSocket();
   const [tracking, setTracking] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -230,14 +232,14 @@ const EmployeeTrackingPage = () => {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Track My Cab</h1>
-          <p className="text-gray-500">Live route view for your assigned commute cab.</p>
+          <p className="text-gray-500">{t('employee_track_cab_subtitle')}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10 text-center">
           <Route className="mx-auto text-gray-300 mb-4" size={48} />
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">No trip available</h2>
-          <p className="text-gray-500 mb-4">Your daily trip has not been assigned yet.</p>
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">{t('employee_no_trip_title')}</h2>
+          <p className="text-gray-500 mb-4">{t('employee_no_trip_desc')}</p>
           <Link to="/employee" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">
-            Back to Dashboard
+            {t('employee_back_dashboard')}
           </Link>
         </div>
       </div>
@@ -248,16 +250,16 @@ const EmployeeTrackingPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Track My Cab</h1>
-          <p className="text-gray-500">Live route view for your assigned commute cab.</p>
+          <h1 className="text-2xl font-bold text-gray-800">{t('employee_track_cab_title')}</h1>
+          <p className="text-gray-500">{t('employee_track_cab_subtitle')}</p>
         </div>
         <div className="flex gap-3">
           <Link to="/employee" className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-700">
-            Back
+            {t('common_back')}
           </Link>
           <button onClick={fetchTracking} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">
             <RefreshCw size={18} />
-            Refresh
+            {t('common_refresh')}
           </button>
         </div>
       </div>
@@ -285,7 +287,7 @@ const EmployeeTrackingPage = () => {
                   <Popup>
                     <div className="min-w-[180px]">
                       <p className="font-semibold text-gray-800">{tracking.officePoint.name}</p>
-                      <p className="text-sm text-gray-600">Office</p>
+                      <p className="text-sm text-gray-600">{t('tracking_office')}</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -296,7 +298,7 @@ const EmployeeTrackingPage = () => {
                   <Popup>
                     <div className="min-w-[180px]">
                       <p className="font-semibold text-gray-800">{tracking.boardingPoint.name}</p>
-                      <p className="text-sm text-gray-600">Boarding point</p>
+                      <p className="text-sm text-gray-600">{t('tracking_boarding_point')}</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -311,7 +313,7 @@ const EmployeeTrackingPage = () => {
                     <Popup>
                       <div className="min-w-[180px]">
                         <p className="font-semibold text-gray-800">{tracking.destinationPoint.name}</p>
-                        <p className="text-sm text-gray-600">Destination</p>
+                        <p className="text-sm text-gray-600">{t('tracking_destination')}</p>
                       </div>
                     </Popup>
                   </Marker>
@@ -345,19 +347,19 @@ const EmployeeTrackingPage = () => {
 
         <div className="space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <h2 className="font-semibold text-gray-800 mb-3">Trip Details</h2>
+            <h2 className="font-semibold text-gray-800 mb-3">{t('tracking_trip_details')}</h2>
             <div className="space-y-2 text-sm text-gray-600">
-              <p className="flex items-center gap-2"><Clock size={14} /> Pickup: {tracking.trip.pickup_time ? formatTimestamp(tracking.trip.pickup_time) : 'Scheduled'}</p>
+              <p className="flex items-center gap-2"><Clock size={14} /> {t('tracking_pickup')}: {tracking.trip.pickup_time ? formatTimestamp(tracking.trip.pickup_time) : 'Scheduled'}</p>
               <p className="flex items-center gap-2"><MapPin size={14} /> {tracking.trip.pickup_location}</p>
               <p className="flex items-center gap-2"><Navigation size={14} /> {tracking.trip.drop_location}</p>
               {tracking.route?.name && <p className="flex items-center gap-2"><Route size={14} /> {tracking.route.name}</p>}
-              {tracking.boardingPoint?.name && <p className="flex items-center gap-2"><MapPin size={14} /> Boarding point: {tracking.boardingPoint.name}</p>}
-              {tracking.officePoint?.name && <p className="flex items-center gap-2"><MapPin size={14} /> Office: {tracking.officePoint.name}</p>}
+              {tracking.boardingPoint?.name && <p className="flex items-center gap-2"><MapPin size={14} /> {t('tracking_boarding_point')}: {tracking.boardingPoint.name}</p>}
+              {tracking.officePoint?.name && <p className="flex items-center gap-2"><MapPin size={14} /> {t('tracking_office')}: {tracking.officePoint.name}</p>}
             </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <h2 className="font-semibold text-gray-800 mb-3">Cab Status</h2>
+            <h2 className="font-semibold text-gray-800 mb-3">{t('tracking_cab_status')}</h2>
             {currentCab ? (
               <div className="space-y-3 text-sm text-gray-600">
                 <div className="flex items-center gap-3">
@@ -377,29 +379,29 @@ const EmployeeTrackingPage = () => {
                   </a>
                 )}
                 <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-blue-700">
-                  <p className="font-medium">{getProgressLabel(tracking.routeProgress)}</p>
-                  {nextStop?.name && (
-                    <p className="text-xs mt-1">Next stop: {nextStop.name}</p>
+                    <p className="font-medium">{getProgressLabel(tracking.routeProgress, t)}</p>
+                    {nextStop?.name && (
+                    <p className="text-xs mt-1">{t('tracking_next_stop')}: {nextStop.name}</p>
                   )}
                   {tracking.distances?.toBoardingKm != null && (
-                    <p className="text-xs mt-1">Distance to boarding point: {tracking.distances.toBoardingKm} km</p>
+                    <p className="text-xs mt-1">{t('tracking_distance_to_boarding')}: {tracking.distances.toBoardingKm} km</p>
                   )}
                   {tracking.distances?.toOfficeKm != null && (
-                    <p className="text-xs">Distance to AISIN office: {tracking.distances.toOfficeKm} km</p>
+                    <p className="text-xs">{t('tracking_distance_to_office')}: {tracking.distances.toOfficeKm} km</p>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">Last location update: {formatTimestamp(currentCab.last_location_update)}</p>
+                <p className="text-xs text-gray-500">{t('tracking_last_location_update')}: {formatTimestamp(currentCab.last_location_update)}</p>
               </div>
             ) : (
               <div className="flex items-start gap-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                <p>Cab is not assigned yet. Tracking will appear automatically once the trip is allocated.</p>
+                <p>{t('tracking_cab_not_assigned')}</p>
               </div>
             )}
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <h2 className="font-semibold text-gray-800 mb-3">Route Stops</h2>
+            <h2 className="font-semibold text-gray-800 mb-3">{t('tracking_route_stops')}</h2>
             {tracking.route?.stops?.length > 0 ? (
               <div className="space-y-2">
                 {tracking.route.stops.map((stop) => (
@@ -415,7 +417,7 @@ const EmployeeTrackingPage = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Route stops are not configured with the route yet.</p>
+              <p className="text-sm text-gray-500">{t('tracking_route_not_configured')}</p>
             )}
           </div>
         </div>

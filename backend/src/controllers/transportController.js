@@ -9,7 +9,7 @@ const User = require('../models/User');
 const logger = require('../utils/logger');
 
 const OFFICE_FALLBACK = {
-  name: 'AISIN Karnataka Limited, Narasapura Industrial Area',
+  name: 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, Karnataka 563133',
   latitude: 13.2947,
   longitude: 78.2172
 };
@@ -60,7 +60,10 @@ const hasVisitedPoint = (history = [], point, radiusKm) => {
 
 const isOfficeText = (value) => {
   const normalized = String(value || '').toLowerCase();
-  return normalized.includes('aisin') || normalized.includes('narasapura');
+  return normalized.includes('aisin')
+    || normalized.includes('narasapura')
+    || normalized.includes('karinaikanahalli')
+    || normalized.includes('563133');
 };
 
 const getOfficePoint = () => ({
@@ -187,11 +190,11 @@ exports.upsertMyProfile = async (req, res) => {
         requested_time: new Date(),
         travel_time: new Date(),
         departure_location: currentProfile.pickup_location || currentProfile.stop_name || 'Employee boarding point',
-        destination_location: currentProfile.drop_location || 'AISIN Karnataka Limited, Narasapura Industrial Area',
+        destination_location: currentProfile.drop_location || OFFICE_FALLBACK.name,
         pickup_location: currentProfile.pickup_location || currentProfile.stop_name || 'Employee boarding point',
-        drop_location: currentProfile.drop_location || 'AISIN Karnataka Limited, Narasapura Industrial Area',
+        drop_location: currentProfile.drop_location || OFFICE_FALLBACK.name,
         boarding_area: currentProfile.pickup_location || currentProfile.stop_name || 'Employee boarding point',
-        dropping_area: currentProfile.drop_location || 'AISIN Karnataka Limited, Narasapura Industrial Area',
+        dropping_area: currentProfile.drop_location || OFFICE_FALLBACK.name,
         priority: 'NORMAL',
         status: 'PENDING',
         number_of_people: 1,

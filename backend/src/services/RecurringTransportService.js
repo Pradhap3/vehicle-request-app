@@ -5,7 +5,8 @@ const logger = require('../utils/logger');
 
 class RecurringTransportService {
   static recurringLegTypes = ['RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
-  static officeKeywords = ['aisin', 'narasapura'];
+  static officeKeywords = ['aisin', 'narasapura', 'karinaikanahalli', '563133', 'aisin automotive karnataka'];
+  static officeName = process.env.OFFICE_NAME || 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, Karnataka 563133';
   static shiftRules = {
     SHIFT_1: { inboundAt: '05:30:00', outboundAt: '14:50:00', inboundAssignAt: '03:30:00', outboundAssignLeadMinutes: 30 },
     SHIFT_2: { inboundAt: '14:30:00', outboundAt: '23:15:00', inboundAssignAt: '12:00:00', outboundAssignLeadMinutes: 30 },
@@ -49,7 +50,7 @@ class RecurringTransportService {
     const profileDrop = profile.drop_location || 'Office';
     const pickupIsOffice = this.isOfficeLocation(profilePickup);
     const dropIsOffice = this.isOfficeLocation(profileDrop);
-    const officeLocation = pickupIsOffice ? profilePickup : (dropIsOffice ? profileDrop : 'AISIN Karnataka Limited, Narasapura Industrial Area');
+    const officeLocation = pickupIsOffice ? profilePickup : (dropIsOffice ? profileDrop : this.officeName);
     const nonOfficeLocation = pickupIsOffice ? profileDrop : profilePickup;
     const inboundPickup = pickupIsOffice ? nonOfficeLocation : profilePickup;
     const inboundDrop = officeLocation;
@@ -72,7 +73,7 @@ class RecurringTransportService {
     const locations = this.getProfileLocations(profile);
     const inboundTime = this.combineDateAndTime(
       dateKey,
-      profile.standard_pickup_time || rules.inboundAt || '08:00:00'
+      rules.inboundAt || profile.standard_pickup_time || '08:00:00'
     );
     const outboundTime = this.combineDateAndTime(
       dateKey,

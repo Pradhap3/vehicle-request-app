@@ -44,6 +44,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
     route_id: request?.route_id || '',
     pickup_time: request?.pickup_time || '',
@@ -55,8 +56,8 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.route_id) newErrors.route_id = 'Route is required';
-    if (!formData.pickup_time) newErrors.pickup_time = 'Pickup time is required';
+    if (!formData.route_id) newErrors.route_id = t('requests_route_required');
+    if (!formData.pickup_time) newErrors.pickup_time = t('requests_pickup_time_required');
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -72,7 +73,7 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Route <span className="text-red-500">*</span>
+          {t('requests_route_label')} <span className="text-red-500">*</span>
         </label>
         <select
           value={formData.route_id}
@@ -81,7 +82,7 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
             errors.route_id ? 'border-red-500' : 'border-gray-300'
           }`}
         >
-          <option value="">Select a route</option>
+          <option value="">{t('requests_select_route')}</option>
           {routes.map((route) => (
             <option key={route.id} value={route.id}>
               {route.name} ({route.start_point} → {route.end_point})
@@ -93,7 +94,7 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Pickup Time <span className="text-red-500">*</span>
+          {t('requests_pickup_time')} <span className="text-red-500">*</span>
         </label>
         <input
           type="datetime-local"
@@ -107,7 +108,7 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Pickup Location</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('requests_pickup_location')}</label>
         <div className="relative">
           <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
@@ -115,13 +116,13 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
             value={formData.pickup_location}
             onChange={(e) => setFormData({ ...formData, pickup_location: e.target.value })}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-            placeholder="Your pickup point"
+            placeholder={t('employee_enter_pickup')}
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Drop Location</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('requests_drop_location')}</label>
         <div className="relative">
           <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
@@ -129,19 +130,19 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
             value={formData.drop_location}
             onChange={(e) => setFormData({ ...formData, drop_location: e.target.value })}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-            placeholder="Your drop point"
+            placeholder={t('employee_enter_drop')}
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('requests_notes')}</label>
         <textarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
           rows={3}
-          placeholder="Any special requirements..."
+          placeholder={t('employee_special_instructions')}
         />
       </div>
 
@@ -152,14 +153,14 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
           className="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
           disabled={loading}
         >
-          Cancel
+          {t('employee_cancel')}
         </button>
         <button
           type="submit"
           className="flex-1 py-2.5 px-4 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
           disabled={loading}
         >
-          {loading ? 'Saving...' : request ? 'Update Request' : 'Submit Request'}
+          {loading ? t('requests_saving') : request ? t('requests_update') : t('requests_submit')}
         </button>
       </div>
     </form>
@@ -167,6 +168,7 @@ const RequestForm = ({ request, routes, onSubmit, onCancel, loading }) => {
 };
 
 const AssignCabModal = ({ isOpen, onClose, request, cabs, onAssign, loading }) => {
+  const { t } = useLanguage();
   const [selectedCabId, setSelectedCabId] = useState('');
 
   const handleAssign = () => {
@@ -176,22 +178,22 @@ const AssignCabModal = ({ isOpen, onClose, request, cabs, onAssign, loading }) =
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Assign Cab">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('requests_assign_cab')}>
       <div className="space-y-4">
         <div className="bg-gray-50 rounded-lg p-4 mb-4">
           <p className="text-sm text-gray-600">
-            <strong>Employee:</strong> {request?.employee_name}
+            <strong>{t('requests_employee_label')}:</strong> {request?.employee_name}
           </p>
           <p className="text-sm text-gray-600">
-            <strong>Route:</strong> {request?.route_name}
+            <strong>{t('requests_route_label')}:</strong> {request?.route_name}
           </p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Available Cab</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{t('requests_select_available_cab')}</label>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {cabs.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">No available cabs</p>
+              <p className="text-gray-500 text-center py-4">{t('requests_no_cabs')}</p>
             ) : (
               cabs.map((cab) => (
                 <label 
@@ -212,7 +214,7 @@ const AssignCabModal = ({ isOpen, onClose, request, cabs, onAssign, loading }) =
                   <div className="flex-1">
                     <p className="font-medium text-gray-800">{cab.cab_number}</p>
                     <p className="text-sm text-gray-500">
-                      {cab.capacity} seats • {cab.driver_name || 'No driver'}
+                      {cab.capacity} seats • {cab.driver_name || t('requests_no_driver')}
                     </p>
                   </div>
                 </label>
@@ -226,14 +228,14 @@ const AssignCabModal = ({ isOpen, onClose, request, cabs, onAssign, loading }) =
             onClick={onClose}
             className="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
           >
-            Cancel
+            {t('employee_cancel')}
           </button>
           <button
             onClick={handleAssign}
             disabled={!selectedCabId || loading}
             className="flex-1 py-2.5 px-4 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
           >
-            {loading ? 'Assigning...' : 'Assign Cab'}
+            {loading ? t('requests_assigning') : t('requests_assign_cab')}
           </button>
         </div>
       </div>
@@ -457,12 +459,12 @@ const RequestsPage = () => {
           className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white"
         >
           <option value="">{t('all_status')}</option>
-          <option value="PENDING">Pending</option>
-          <option value="APPROVED">Approved</option>
-          <option value="ASSIGNED">Assigned</option>
-          <option value="IN_PROGRESS">In Progress</option>
-          <option value="COMPLETED">Completed</option>
-          <option value="CANCELLED">Cancelled</option>
+          <option value="PENDING">{t('requests_pending')}</option>
+          <option value="APPROVED">{t('requests_approved')}</option>
+          <option value="ASSIGNED">{t('employee_assigned')}</option>
+          <option value="IN_PROGRESS">{t('requests_in_progress')}</option>
+          <option value="COMPLETED">{t('requests_completed')}</option>
+          <option value="CANCELLED">{t('requests_cancelled')}</option>
         </select>
         <input
           type="date"
@@ -480,7 +482,7 @@ const RequestsPage = () => {
       ) : requests.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <ClipboardList size={48} className="mx-auto mb-4 text-gray-300" />
-          <h3 className="text-lg font-medium text-gray-800 mb-2">No requests found</h3>
+          <h3 className="text-lg font-medium text-gray-800 mb-2">{t('requests_no_results')}</h3>
           <p className="text-gray-500 mb-4">{t('requests_empty_desc')}</p>
           <button
             onClick={() => { setSelectedRequest(null); setIsModalOpen(true); }}
@@ -548,7 +550,7 @@ const RequestsPage = () => {
                       className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
                     >
                       <CheckCircle size={14} />
-                      Approve
+                      {t('requests_approve')}
                     </button>
                   )}
 
@@ -560,7 +562,7 @@ const RequestsPage = () => {
                         className="flex items-center gap-1 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-sm hover:bg-primary-600"
                       >
                         <Car size={14} />
-                        Assign Cab
+                        {t('requests_assign_cab')}
                       </button>
                     )}
 
