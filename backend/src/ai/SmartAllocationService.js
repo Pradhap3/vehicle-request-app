@@ -36,7 +36,8 @@ class SmartAllocationService {
     this.schemaCache = {
       columns,
       assignmentColumn: pick(['assigned_cab_id', 'cab_id']),
-      requestTimeColumn: pick(['requested_time', 'pickup_time', 'created_at'])
+      requestTimeColumn: pick(['requested_time', 'pickup_time', 'created_at']),
+      requestTypeColumn: pick(['request_type'])
     };
 
     return this.schemaCache;
@@ -132,6 +133,7 @@ class SmartAllocationService {
           FROM cab_requests cr
           INNER JOIN users e ON cr.employee_id = e.id
           WHERE cr.route_id = @route_id AND cr.status = 'PENDING'
+            ${schema.requestTypeColumn ? `AND cr.${schema.requestTypeColumn} = 'RECURRING'` : ''}
             ${
               options.onlyUpcomingWithinMinutes
                 ? `AND ${schema.requestTimeColumn || 'created_at'} >= GETDATE()
@@ -346,6 +348,7 @@ class SmartAllocationService {
         FROM cab_requests
         WHERE route_id = @route_id
           AND status = 'PENDING'
+          ${schema.requestTypeColumn ? `AND ${schema.requestTypeColumn} = 'RECURRING'` : ''}
           AND CAST(${schema.requestTimeColumn || 'created_at'} AS DATE) = @target_date
         ORDER BY created_at ASC
       `);
@@ -436,6 +439,7 @@ class SmartAllocationService {
           FROM cab_requests
           WHERE route_id IS NOT NULL
             AND status = 'PENDING'
+            ${schema.requestTypeColumn ? `AND ${schema.requestTypeColumn} = 'RECURRING'` : ''}
             AND ${timeCol} IS NOT NULL
             AND ${timeCol} >= GETDATE()
             AND ${timeCol} <= DATEADD(MINUTE, @window_minutes, GETDATE())

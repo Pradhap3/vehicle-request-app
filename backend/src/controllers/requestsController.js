@@ -7,6 +7,7 @@ const SmartAllocationService = require('../ai/SmartAllocationService');
 const Cab = require('../models/Cab');
 const AuditLog = require('../models/AuditLog');
 const RecurringTransportService = require('../services/RecurringTransportService');
+const User = require('../models/User');
 const logger = require('../utils/logger');
 
 const BOOKING_MIN_ADVANCE_MINUTES = parseInt(process.env.BOOKING_MIN_ADVANCE_MINUTES || '60', 10);
@@ -109,6 +110,20 @@ const emitNotification = async (req, userId, payload) => {
     });
   }
   return created;
+};
+
+const notifyAdminsForApproval = async (req, request, requestType) => {
+  const admins = (await User.findAll()).filter((user) => ['HR_ADMIN', 'ADMIN'].includes(user.role));
+  const typeLabel = String(requestType || 'ADHOC').replace(/_/g, ' ');
+
+  for (const admin of admins) {
+    await emitNotification(req, admin.id, {
+      type: 'REQUEST_APPROVAL_REQUIRED',
+      title: 'Approval Required',
+      message: `${typeLabel} request submitted by employee ${request.employee_id}. Review and approve from Requests.`,
+      data: { request_id: request.id, route: '/requests' }
+    });
+  }
 };
 
 // Get all requests
@@ -302,6 +317,10 @@ exports.createRequest = async (req, res) => {
       message: 'Your cab request has been submitted and is pending approval.',
       data: { request_id: request.id, route_id: request.route_id, route: '/requests' }
     });
+
+    if (['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE'].includes(String(request_type || 'ADHOC').toUpperCase())) {
+      await notifyAdminsForApproval(req, request, request_type || 'ADHOC');
+    }
 
     logger.info(`Cab request created: ${request.id}`);
 
