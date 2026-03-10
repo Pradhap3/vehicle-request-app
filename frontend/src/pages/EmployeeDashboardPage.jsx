@@ -264,9 +264,17 @@ export default function EmployeeDashboardPage() {
       COMPLETED: 'bg-blue-100 text-blue-800',
       IN_PROGRESS: 'bg-indigo-100 text-indigo-800'
     };
+    const labels = {
+      PENDING: t('requests_pending'),
+      APPROVED: t('requests_approved'),
+      REJECTED: t('requests_rejected'),
+      CANCELLED: t('requests_cancelled'),
+      COMPLETED: t('requests_completed'),
+      IN_PROGRESS: t('requests_in_progress')
+    };
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.PENDING}`}>
-        {status}
+        {labels[status] || status}
       </span>
     );
   };
@@ -274,9 +282,14 @@ export default function EmployeeDashboardPage() {
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const date = parseISO(dateStr);
-    if (isToday(date)) return 'Today';
-    if (isTomorrow(date)) return 'Tomorrow';
+    if (isToday(date)) return t('common_today');
+    if (isTomorrow(date)) return t('common_tomorrow');
     return format(date, 'MMM dd, yyyy');
+  };
+
+  const formatPickupTime = (value) => {
+    if (!value) return '';
+    return format(parseISO(value), 'hh:mm a');
   };
 
   if (loading) {
@@ -342,7 +355,7 @@ export default function EmployeeDashboardPage() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  <span>{t('employee_pickup_at')} {todayTrip.pickup_time || todayTrip.requested_time}</span>
+                  <span>{t('employee_pickup_at')} {formatPickupTime(todayTrip.pickup_time || todayTrip.requested_time)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
@@ -433,7 +446,7 @@ export default function EmployeeDashboardPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{formatDate(request.requested_time || request.pickup_time)}</span>
-                        <span className="text-gray-500">{t('employee_at')} {request.pickup_time ? format(parseISO(request.pickup_time), 'HH:mm') : ''}</span>
+                        <span className="text-gray-500">{t('employee_at')} {request.pickup_time ? format(parseISO(request.pickup_time), 'hh:mm a') : ''}</span>
                         {getStatusBadge(request.status)}
                       </div>
                       <div className="text-sm text-gray-600 flex items-center gap-1">

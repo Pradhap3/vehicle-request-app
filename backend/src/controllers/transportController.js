@@ -16,6 +16,7 @@ const OFFICE_FALLBACK = {
 
 const OFFICE_RADIUS_KM = 0.5;
 const BOARDING_RADIUS_KM = 0.25;
+const MAX_ROUTE_DISTANCE_FROM_OFFICE_KM = 250;
 const ACTIVE_TRIP_STATUSES = ['APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'COMPLETED'];
 const INDIA_BOUNDS = {
   minLatitude: 5,
@@ -434,6 +435,18 @@ exports.getMyTracking = async (req, res) => {
       });
     }
 
+    const sanitizedRoutePath = routePath.filter((point) => {
+      if (!officePoint?.latitude || !officePoint?.longitude) return true;
+      if (point.kind === 'OFFICE') return true;
+      if (point.latitude == null || point.longitude == null) return false;
+      return distanceKm(
+        Number(point.latitude),
+        Number(point.longitude),
+        Number(officePoint.latitude),
+        Number(officePoint.longitude)
+      ) <= MAX_ROUTE_DISTANCE_FROM_OFFICE_KM;
+    });
+
     const cabAtBoardingPoint = isNearPoint(cab, boardingPoint, BOARDING_RADIUS_KM);
     const cabAtOffice = isNearPoint(cab, officePoint, OFFICE_RADIUS_KM);
     const visitedBoardingPoint = hasVisitedPoint(history, boardingPoint, BOARDING_RADIUS_KM);
@@ -476,7 +489,7 @@ exports.getMyTracking = async (req, res) => {
         cab,
         profile,
         route: route ? { ...route, stops } : null,
-        routePath,
+        routePath: sanitizedRoutePath,
         history,
         officePoint,
         boardingPoint,

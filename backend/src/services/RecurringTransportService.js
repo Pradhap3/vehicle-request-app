@@ -7,6 +7,7 @@ class RecurringTransportService {
   static recurringLegTypes = ['RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
   static officeKeywords = ['aisin', 'narasapura', 'karinaikanahalli', '563133', 'aisin automotive karnataka'];
   static officeName = process.env.OFFICE_NAME || 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, KIADB Industrial Area, Karnataka 563133';
+  static localOffsetMinutes = 330;
   static shiftRules = {
     SHIFT_1: { inboundAt: '05:30:00', outboundAt: '14:50:00', inboundAssignAt: '03:30:00', outboundAssignLeadMinutes: 30 },
     SHIFT_2: { inboundAt: '14:30:00', outboundAt: '23:15:00', inboundAssignAt: '12:00:00', outboundAssignLeadMinutes: 30 },
@@ -21,11 +22,57 @@ class RecurringTransportService {
 
   static combineDateAndTime(date, hhmmss = '08:00:00', dayOffset = 0) {
     const [hh = '08', mm = '00', ss = '00'] = String(hhmmss || '08:00:00').split(':');
-    const combined = new Date(`${date}T${hh.padStart(2, '0')}:${mm.padStart(2, '0')}:${ss.padStart(2, '0')}`);
+    const [year, month, day] = String(date).slice(0, 10).split('-').map((value) => parseInt(value, 10));
+    const utcMillis = Date.UTC(
+      year,
+      (month || 1) - 1,
+      day || 1,
+      parseInt(hh, 10),
+      parseInt(mm, 10),
+      parseInt(ss, 10)
+    ) - (this.localOffsetMinutes * 60000);
+    const combined = new Date(utcMillis);
     if (!Number.isNaN(combined.getTime()) && dayOffset) {
-      combined.setDate(combined.getDate() + dayOffset);
+      combined.setUTCDate(combined.getUTCDate() + dayOffset);
     }
     return combined;
+  }
+
+  static sameMinute(a, b) {
+    const first = new Date(a);
+    const second = new Date(b);
+    if (Number.isNaN(first.getTime()) || Number.isNaN(second.getTime())) return false;
+    return Math.abs(first.getTime() - second.getTime()) < 60000;
+  }
+
+  static async syncRecurringTrip(existing, tripTemplate) {
+    if (!existing || !['PENDING', 'APPROVED'].includes(existing.status)) {
+      return existing;
+    }
+
+    const needsTimeRefresh =
+      !this.sameMinute(existing.pickup_time || existing.requested_time, tripTemplate.requestedAt)
+      || !this.sameMinute(existing.assigned_at, tripTemplate.assignAt);
+    const needsLocationRefresh =
+      String(existing.pickup_location || '') !== String(tripTemplate.pickupLocation || '')
+      || String(existing.drop_location || '') !== String(tripTemplate.dropLocation || '');
+
+    if (!needsTimeRefresh && !needsLocationRefresh) {
+      return existing;
+    }
+
+    return CabRequest.update(existing.id, {
+      pickup_time: tripTemplate.requestedAt,
+      requested_time: tripTemplate.requestedAt,
+      travel_time: tripTemplate.requestedAt,
+      assigned_at: tripTemplate.assignAt,
+      pickup_location: tripTemplate.pickupLocation,
+      departure_location: tripTemplate.pickupLocation,
+      boarding_area: tripTemplate.pickupLocation,
+      drop_location: tripTemplate.dropLocation,
+      destination_location: tripTemplate.dropLocation,
+      dropping_area: tripTemplate.dropLocation
+    });
   }
 
   static normalizeShift(rawShift) {
@@ -176,6 +223,7 @@ class RecurringTransportService {
             existingDate === dateKey &&
             ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(existing.status)
           ) {
+            await this.syncRecurringTrip(existing, tripTemplate);
             continue;
           }
 

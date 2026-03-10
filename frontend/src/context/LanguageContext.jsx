@@ -194,6 +194,7 @@ const translations = {
     requests_in_progress: 'In Progress',
     requests_completed: 'Completed',
     requests_cancelled: 'Cancelled',
+    requests_rejected: 'Rejected',
     requests_no_cabs: 'No available cabs',
     requests_select_route: 'Select a route',
     requests_pickup_time: 'Pickup Time',
@@ -248,6 +249,8 @@ const translations = {
     employee_profile_saved: 'Recurring transport profile saved',
     employee_load_failed: 'Failed to load data',
     employee_cancel_confirm: 'Are you sure you want to cancel this request?',
+    common_today: 'Today',
+    common_tomorrow: 'Tomorrow',
     tracking_all_cabs: 'All Cabs',
     tracking_tracked: 'tracked',
     profile_info: 'Profile Information',
@@ -443,6 +446,69 @@ const translations = {
   }
 };
 
+const localeOverrides = {
+  ja: {
+    employee_manage_desc: 'キャブ申請を管理し、移動を追跡します',
+    notifications_unread: '未読通知',
+    requests_approved: '承認済み',
+    requests_pending: '保留中',
+    requests_in_progress: '進行中',
+    requests_completed: '完了',
+    requests_cancelled: 'キャンセル済み',
+    requests_rejected: '却下',
+    profile_recurring: '定期プロフィール',
+    requests_adhoc: '都度リクエスト',
+    employee_track_cab_title: 'キャブを追跡',
+    common_back: '戻る',
+    common_refresh: '更新'
+  },
+  ta: {
+    employee_manage_desc: 'உங்கள் கேப் கோரிக்கைகளை நிர்வகித்து உங்கள் பயணங்களை கண்காணிக்கவும்',
+    notifications_unread: 'படிக்காத அறிவிப்புகள்',
+    requests_approved: 'அங்கீகரிக்கப்பட்டது',
+    requests_pending: 'நிலுவை',
+    requests_in_progress: 'செயலில்',
+    requests_completed: 'முடிந்தது',
+    requests_cancelled: 'ரத்து செய்யப்பட்டது',
+    requests_rejected: 'நிராகரிக்கப்பட்டது',
+    profile_recurring: 'தினசரி பயண சுயவிவரம்',
+    requests_adhoc: 'அட்ஹாக் கோரிக்கை',
+    employee_track_cab_title: 'என் கேப்பை கண்காணிக்க',
+    common_back: 'பின்',
+    common_refresh: 'புதுப்பிக்க'
+  },
+  hi: {
+    employee_manage_desc: 'अपनी कैब रिक्वेस्ट मैनेज करें और यात्रा ट्रैक करें',
+    notifications_unread: 'अपठित सूचनाएं',
+    requests_approved: 'अनुमोदित',
+    requests_pending: 'लंबित',
+    requests_in_progress: 'प्रगति में',
+    requests_completed: 'पूरा',
+    requests_cancelled: 'रद्द',
+    requests_rejected: 'अस्वीकृत',
+    profile_recurring: 'दैनिक यात्रा प्रोफाइल',
+    requests_adhoc: 'एडहॉक अनुरोध',
+    employee_track_cab_title: 'मेरी कैब ट्रैक करें',
+    common_back: 'पीछे',
+    common_refresh: 'रिफ्रेश'
+  },
+  kn: {
+    employee_manage_desc: 'ನಿಮ್ಮ ಕ್ಯಾಬ್ ವಿನಂತಿಗಳನ್ನು ನಿರ್ವಹಿಸಿ ಮತ್ತು ಪ್ರಯಾಣವನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ',
+    notifications_unread: 'ಓದದ ಅಧಿಸೂಚನೆಗಳು',
+    requests_approved: 'ಅನುಮೋದಿತ',
+    requests_pending: 'ಬಾಕಿ',
+    requests_in_progress: 'ಪ್ರಗತಿಯಲ್ಲಿದೆ',
+    requests_completed: 'ಪೂರ್ಣ',
+    requests_cancelled: 'ರದ್ದು',
+    requests_rejected: 'ತಿರಸ್ಕೃತ',
+    profile_recurring: 'ದಿನಂತ ಪ್ರಯಾಣ ಪ್ರೊಫೈಲ್',
+    requests_adhoc: 'ಏಡ್ಹಾಕ್ ವಿನಂತಿ',
+    employee_track_cab_title: 'ನನ್ನ ಕ್ಯಾಬ್ ಟ್ರ್ಯಾಕ್ ಮಾಡಿ',
+    common_back: 'ಹಿಂದೆ',
+    common_refresh: 'ರಿಫ್ರೆಶ್'
+  }
+};
+
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(localStorage.getItem('preferred_language') || 'en');
 
@@ -452,6 +518,8 @@ export const LanguageProvider = ({ children }) => {
 
   const t = useMemo(() => {
     return (key) => {
+      const override = localeOverrides[language]?.[key];
+      if (override) return override;
       const localized = translations[language]?.[key];
       if (localized) return localized;
       return translations.en[key] || key;

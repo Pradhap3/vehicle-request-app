@@ -436,6 +436,19 @@ const RequestsPage = () => {
     NO_SHOW: 'bg-gray-100 text-gray-800'
   };
 
+  const getStatusLabel = (status) => {
+    const labels = {
+      PENDING: t('requests_pending'),
+      APPROVED: t('requests_approved'),
+      IN_PROGRESS: t('requests_in_progress'),
+      COMPLETED: t('requests_completed'),
+      CANCELLED: t('requests_cancelled'),
+      REJECTED: t('requests_rejected'),
+      NO_SHOW: t('driver_status_no_show')
+    };
+    return labels[status] || status;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -519,7 +532,7 @@ const RequestsPage = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[request.status]}`}>
-                      {request.status}
+                      {getStatusLabel(request.status)}
                     </span>
                     {request.cab_number && (
                       <span className="flex items-center gap-1 text-sm text-gray-600">

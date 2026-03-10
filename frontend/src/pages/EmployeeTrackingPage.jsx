@@ -133,6 +133,17 @@ const getProgressLabel = (value, t) => {
   }
 };
 
+const distanceKm = (lat1, lon1, lat2, lon2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const EmployeeTrackingPage = () => {
   const { t } = useLanguage();
   const { driverLocations } = useSocket();
@@ -175,10 +186,17 @@ const EmployeeTrackingPage = () => {
   );
 
   const routePathPoints = useMemo(
-    () => (tracking?.routePath || [])
-      .filter((point) => point.latitude != null && point.longitude != null)
-      .map((point) => [point.latitude, point.longitude]),
-    [tracking?.routePath]
+    () => {
+      const office = tracking?.officePoint;
+      return (tracking?.routePath || [])
+        .filter((point) => {
+          if (point.latitude == null || point.longitude == null) return false;
+          if (!office?.latitude || !office?.longitude) return true;
+          return distanceKm(point.latitude, point.longitude, office.latitude, office.longitude) <= 250;
+        })
+        .map((point) => [point.latitude, point.longitude]);
+    },
+    [tracking?.routePath, tracking?.officePoint]
   );
 
   const pathPoints = useMemo(
