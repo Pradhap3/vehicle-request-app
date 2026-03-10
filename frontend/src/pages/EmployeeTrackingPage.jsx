@@ -58,6 +58,38 @@ const stopIcon = L.divIcon({
   iconAnchor: [8, 8]
 });
 
+const boardingPointIcon = L.divIcon({
+  className: 'employee-boarding-marker',
+  html: `
+    <div style="
+      width: 20px;
+      height: 20px;
+      background: #f59e0b;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    "></div>
+  `,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
+});
+
+const officeIcon = L.divIcon({
+  className: 'employee-office-marker',
+  html: `
+    <div style="
+      width: 20px;
+      height: 20px;
+      background: #ef4444;
+      border-radius: 4px;
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+    "></div>
+  `,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
+});
+
 const MapViewport = ({ bounds, center }) => {
   const map = useMap();
 
@@ -77,6 +109,27 @@ const MapViewport = ({ bounds, center }) => {
 const formatTimestamp = (value) => {
   if (!value) return 'Unknown';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const getProgressLabel = (value) => {
+  switch (value) {
+    case 'AT_BOARDING_POINT':
+      return 'Cab has reached your boarding point';
+    case 'LEFT_BOARDING_POINT':
+      return 'Cab has left the boarding point';
+    case 'COMING_TO_BOARDING_POINT':
+      return 'Cab is coming to your boarding point';
+    case 'AT_OFFICE_BOARDING_POINT':
+      return 'Cab is at AISIN boarding point';
+    case 'LEFT_OFFICE_BOARDING_POINT':
+      return 'Cab has left AISIN boarding point';
+    case 'COMING_TO_OFFICE_BOARDING_POINT':
+      return 'Cab is coming to AISIN boarding point';
+    case 'AT_OFFICE':
+      return 'Cab is currently at AISIN office';
+    default:
+      return 'Waiting for cab assignment';
+  }
 };
 
 const EmployeeTrackingPage = () => {
@@ -131,10 +184,36 @@ const EmployeeTrackingPage = () => {
     if (currentCab?.current_latitude != null && currentCab?.current_longitude != null) {
       points.push([currentCab.current_latitude, currentCab.current_longitude]);
     }
+    if (tracking?.boardingPoint?.latitude != null && tracking?.boardingPoint?.longitude != null) {
+      points.push([tracking.boardingPoint.latitude, tracking.boardingPoint.longitude]);
+    }
+    if (tracking?.officePoint?.latitude != null && tracking?.officePoint?.longitude != null) {
+      points.push([tracking.officePoint.latitude, tracking.officePoint.longitude]);
+    }
     routeStopsWithCoords.forEach((stop) => points.push([stop.latitude, stop.longitude]));
     pathPoints.forEach((point) => points.push(point));
     return points;
-  }, [currentCab, pathPoints, routeStopsWithCoords]);
+  }, [currentCab, pathPoints, routeStopsWithCoords, tracking?.boardingPoint, tracking?.officePoint]);
+
+  const routeGuidePoints = useMemo(() => {
+    const points = [];
+    if (tracking?.boardingPoint?.latitude != null && tracking?.boardingPoint?.longitude != null) {
+      points.push([tracking.boardingPoint.latitude, tracking.boardingPoint.longitude]);
+    }
+    routeStopsWithCoords.forEach((stop) => {
+      if (
+        !tracking?.boardingPoint ||
+        Number(stop.latitude) !== Number(tracking.boardingPoint.latitude) ||
+        Number(stop.longitude) !== Number(tracking.boardingPoint.longitude)
+      ) {
+        points.push([stop.latitude, stop.longitude]);
+      }
+    });
+    if (tracking?.officePoint?.latitude != null && tracking?.officePoint?.longitude != null) {
+      points.push([tracking.officePoint.latitude, tracking.officePoint.longitude]);
+    }
+    return points;
+  }, [routeStopsWithCoords, tracking?.boardingPoint, tracking?.officePoint]);
 
   const fallbackCenter = mapBounds[0] || [13.2947, 78.2172];
 
@@ -197,6 +276,32 @@ const EmployeeTrackingPage = () => {
                 <Polyline positions={pathPoints} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.7 }} />
               )}
 
+              {routeGuidePoints.length > 1 && (
+                <Polyline positions={routeGuidePoints} pathOptions={{ color: '#ef4444', weight: 5, opacity: 0.85 }} />
+              )}
+
+              {tracking?.officePoint?.latitude != null && tracking?.officePoint?.longitude != null && (
+                <Marker position={[tracking.officePoint.latitude, tracking.officePoint.longitude]} icon={officeIcon}>
+                  <Popup>
+                    <div className="min-w-[180px]">
+                      <p className="font-semibold text-gray-800">{tracking.officePoint.name}</p>
+                      <p className="text-sm text-gray-600">Office</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+
+              {tracking?.boardingPoint?.latitude != null && tracking?.boardingPoint?.longitude != null && (
+                <Marker position={[tracking.boardingPoint.latitude, tracking.boardingPoint.longitude]} icon={boardingPointIcon}>
+                  <Popup>
+                    <div className="min-w-[180px]">
+                      <p className="font-semibold text-gray-800">{tracking.boardingPoint.name}</p>
+                      <p className="text-sm text-gray-600">Boarding point</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+
               {routeStopsWithCoords.map((stop) => (
                 <Marker key={stop.id} position={[stop.latitude, stop.longitude]} icon={stopIcon}>
                   <Popup>
@@ -231,6 +336,8 @@ const EmployeeTrackingPage = () => {
               <p className="flex items-center gap-2"><MapPin size={14} /> {tracking.trip.pickup_location}</p>
               <p className="flex items-center gap-2"><Navigation size={14} /> {tracking.trip.drop_location}</p>
               {tracking.route?.name && <p className="flex items-center gap-2"><Route size={14} /> {tracking.route.name}</p>}
+              {tracking.boardingPoint?.name && <p className="flex items-center gap-2"><MapPin size={14} /> Boarding point: {tracking.boardingPoint.name}</p>}
+              {tracking.officePoint?.name && <p className="flex items-center gap-2"><MapPin size={14} /> Office: {tracking.officePoint.name}</p>}
             </div>
           </div>
 
@@ -254,6 +361,15 @@ const EmployeeTrackingPage = () => {
                     {currentCab.driver_phone || tracking.trip.driver_phone}
                   </a>
                 )}
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-blue-700">
+                  <p className="font-medium">{getProgressLabel(tracking.routeProgress)}</p>
+                  {tracking.distances?.toBoardingKm != null && (
+                    <p className="text-xs mt-1">Distance to boarding point: {tracking.distances.toBoardingKm} km</p>
+                  )}
+                  {tracking.distances?.toOfficeKm != null && (
+                    <p className="text-xs">Distance to AISIN office: {tracking.distances.toOfficeKm} km</p>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500">Last location update: {formatTimestamp(currentCab.last_location_update)}</p>
               </div>
             ) : (
