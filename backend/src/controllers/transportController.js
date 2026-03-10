@@ -9,14 +9,20 @@ const User = require('../models/User');
 const logger = require('../utils/logger');
 
 const OFFICE_FALLBACK = {
-  name: 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, Karnataka 563133',
-  latitude: 13.2947,
-  longitude: 78.2172
+  name: 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, KIADB Industrial Area, Karnataka 563133',
+  latitude: 13.11,
+  longitude: 77.99
 };
 
 const OFFICE_RADIUS_KM = 0.5;
 const BOARDING_RADIUS_KM = 0.25;
 const ACTIVE_TRIP_STATUSES = ['APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'COMPLETED'];
+const INDIA_BOUNDS = {
+  minLatitude: 5,
+  maxLatitude: 38,
+  minLongitude: 67,
+  maxLongitude: 98
+};
 
 const toNumberOrNull = (value) => {
   const num = Number(value);
@@ -63,13 +69,58 @@ const isOfficeText = (value) => {
   return normalized.includes('aisin')
     || normalized.includes('narasapura')
     || normalized.includes('karinaikanahalli')
+    || normalized.includes('kiadb')
     || normalized.includes('563133');
+};
+
+const normalizeIndianLongitude = (longitude) => {
+  const lng = toNumberOrNull(longitude);
+  if (lng === null) return null;
+  if (lng < 0 && Math.abs(lng) >= INDIA_BOUNDS.minLongitude && Math.abs(lng) <= INDIA_BOUNDS.maxLongitude) {
+    return Math.abs(lng);
+  }
+  return lng;
+};
+
+const normalizePoint = (point, { assumeIndia = false } = {}) => {
+  if (!point) return null;
+  const latitude = toNumberOrNull(point.latitude);
+  let longitude = normalizeIndianLongitude(point.longitude);
+
+  if (latitude === null || longitude === null) {
+    return {
+      ...point,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null
+    };
+  }
+
+  if (assumeIndia) {
+    const withinIndia =
+      latitude >= INDIA_BOUNDS.minLatitude &&
+      latitude <= INDIA_BOUNDS.maxLatitude &&
+      longitude >= INDIA_BOUNDS.minLongitude &&
+      longitude <= INDIA_BOUNDS.maxLongitude;
+    if (!withinIndia) {
+      return {
+        ...point,
+        latitude: null,
+        longitude: null
+      };
+    }
+  }
+
+  return {
+    ...point,
+    latitude,
+    longitude
+  };
 };
 
 const getOfficePoint = () => ({
   name: process.env.OFFICE_NAME || OFFICE_FALLBACK.name,
   latitude: toNumberOrNull(process.env.OFFICE_LATITUDE) ?? OFFICE_FALLBACK.latitude,
-  longitude: toNumberOrNull(process.env.OFFICE_LONGITUDE) ?? OFFICE_FALLBACK.longitude
+  longitude: normalizeIndianLongitude(process.env.OFFICE_LONGITUDE) ?? OFFICE_FALLBACK.longitude
 });
 
 const emitUserNotification = async (req, userId, payload) => {
@@ -99,12 +150,17 @@ const normalizeRequestType = (requestType) =>
 const selectTodayTrip = (requests = []) => {
   const today = new Date().toISOString().slice(0, 10);
   const now = Date.now();
-  const todayTrips = requests
+  let todayTrips = requests
     .filter((row) => {
       const tripDate = row.requested_time ? new Date(row.requested_time).toISOString().slice(0, 10) : null;
       return tripDate === today && ACTIVE_TRIP_STATUSES.includes(row.status);
     })
     .sort((a, b) => new Date(a.requested_time || a.pickup_time || 0) - new Date(b.requested_time || b.pickup_time || 0));
+
+  const hasSplitRecurring = todayTrips.some((row) => ['RECURRING_INBOUND', 'RECURRING_OUTBOUND'].includes(row.request_type));
+  if (hasSplitRecurring) {
+    todayTrips = todayTrips.filter((row) => row.request_type !== 'RECURRING');
+  }
 
   const inProgress = todayTrips.find((row) => row.status === 'IN_PROGRESS');
   if (inProgress) return inProgress;
@@ -286,7 +342,7 @@ exports.getMyTracking = async (req, res) => {
     const history = cabId
       ? await Cab.getLocationHistory(cabId, new Date(Date.now() - 2 * 60 * 60 * 1000), new Date())
       : [];
-    const officePoint = getOfficePoint();
+    const officePoint = normalizePoint(getOfficePoint(), { assumeIndia: true });
 
     const selectedStop =
       (profile?.stop_sequence ? stops.find((stop) => Number(stop.stop_sequence) === Number(profile.stop_sequence)) : null) ||
@@ -294,7 +350,7 @@ exports.getMyTracking = async (req, res) => {
       null;
 
     const tripDirection = isOfficeText(trip.pickup_location) ? 'OFFICE_TO_DESTINATION' : 'BOARDING_TO_OFFICE';
-    const boardingPoint = tripDirection === 'OFFICE_TO_DESTINATION'
+    const boardingPoint = normalizePoint(tripDirection === 'OFFICE_TO_DESTINATION'
       ? {
           name: officePoint.name,
           latitude: officePoint.latitude,
@@ -307,18 +363,23 @@ exports.getMyTracking = async (req, res) => {
           longitude: selectedStop?.longitude ?? profile?.pickup_longitude ?? null,
           stop_sequence: selectedStop?.stop_sequence ?? profile?.stop_sequence ?? null,
           source: selectedStop ? 'ROUTE_STOP' : 'PROFILE'
-        };
+        }, { assumeIndia: true });
 
-    const destinationPoint = tripDirection === 'OFFICE_TO_DESTINATION'
+    const destinationPoint = normalizePoint(tripDirection === 'OFFICE_TO_DESTINATION'
       ? {
           name: selectedStop?.stop_name || profile?.drop_location || trip.drop_location,
           latitude: selectedStop?.latitude ?? profile?.drop_latitude ?? null,
           longitude: selectedStop?.longitude ?? profile?.drop_longitude ?? null,
           stop_sequence: selectedStop?.stop_sequence ?? profile?.stop_sequence ?? null
         }
-      : officePoint;
+      : officePoint, { assumeIndia: true });
 
     const orderedStops = [...stops]
+      .map((stop) => normalizePoint({
+        ...stop,
+        latitude: stop.latitude,
+        longitude: stop.longitude
+      }, { assumeIndia: true }))
       .filter((stop) => stop.latitude != null && stop.longitude != null)
       .sort((a, b) => Number(a.stop_sequence || 0) - Number(b.stop_sequence || 0));
 

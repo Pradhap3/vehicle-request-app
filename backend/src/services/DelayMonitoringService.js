@@ -4,6 +4,10 @@ const logger = require('../utils/logger');
 
 const DEFAULT_OFFICE_RADIUS_KM = parseFloat(process.env.OFFICE_GEOFENCE_RADIUS_KM || '1.0');
 const ALERT_COOLDOWN_MINUTES = parseInt(process.env.SHIFT_DELAY_ALERT_COOLDOWN_MINUTES || '30', 10);
+const DEFAULT_OFFICE_LOCATION = {
+  lat: 13.11,
+  lng: 77.99
+};
 
 const SHIFT_RULES = {
   SHIFT_1: { entryBy: '05:30', leaveAt: '14:50' }, // shift end 14:30 + 20 min
@@ -108,9 +112,15 @@ class DelayMonitoringService {
 
   static async getOfficeConfig() {
     const lat = parseFloat(process.env.OFFICE_LATITUDE || '');
-    const lng = parseFloat(process.env.OFFICE_LONGITUDE || '');
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng, radiusKm: DEFAULT_OFFICE_RADIUS_KM };
+    const rawLng = parseFloat(process.env.OFFICE_LONGITUDE || '');
+    const lng = Number.isFinite(rawLng)
+      ? (rawLng < 0 && Math.abs(rawLng) >= 67 && Math.abs(rawLng) <= 98 ? Math.abs(rawLng) : rawLng)
+      : DEFAULT_OFFICE_LOCATION.lng;
+    return {
+      lat: Number.isFinite(lat) ? lat : DEFAULT_OFFICE_LOCATION.lat,
+      lng,
+      radiusKm: DEFAULT_OFFICE_RADIUS_KM
+    };
   }
 
   static async getActiveHRUsers() {

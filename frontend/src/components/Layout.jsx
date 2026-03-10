@@ -133,7 +133,7 @@ const Layout = () => {
       return [
         { path: '/employee', icon: LayoutDashboard, label: t('nav_my_dashboard') },
         { path: '/requests', icon: ClipboardList, label: t('nav_my_requests') },
-        { path: '/employee/tracking', icon: MapPin, label: t('nav_track_my_cab') },
+        { path: '/employee/tracking', icon: MapPin, label: t('nav_tracking') },
       ];
     }
     // Fallback for any other role - show admin navigation

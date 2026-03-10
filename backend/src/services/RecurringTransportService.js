@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
 class RecurringTransportService {
   static recurringLegTypes = ['RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
   static officeKeywords = ['aisin', 'narasapura', 'karinaikanahalli', '563133', 'aisin automotive karnataka'];
-  static officeName = process.env.OFFICE_NAME || 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, Karnataka 563133';
+  static officeName = process.env.OFFICE_NAME || 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, KIADB Industrial Area, Karnataka 563133';
   static shiftRules = {
     SHIFT_1: { inboundAt: '05:30:00', outboundAt: '14:50:00', inboundAssignAt: '03:30:00', outboundAssignLeadMinutes: 30 },
     SHIFT_2: { inboundAt: '14:30:00', outboundAt: '23:15:00', inboundAssignAt: '12:00:00', outboundAssignLeadMinutes: 30 },
@@ -136,6 +136,20 @@ class RecurringTransportService {
     return keeper;
   }
 
+  static async cleanupLegacyRecurringTrips(employeeId, dateKey) {
+    const legacyTrips = await CabRequest.findRecurringTripsForEmployeeOnDate(
+      employeeId,
+      dateKey,
+      ['RECURRING']
+    );
+
+    for (const legacyTrip of legacyTrips) {
+      if (['PENDING', 'APPROVED'].includes(legacyTrip.status)) {
+        await CabRequest.cancel(legacyTrip.id);
+      }
+    }
+  }
+
   static async ensureDailyTrips(targetDate = new Date(), { io } = {}) {
     const dateKey = this.toIsoDate(targetDate);
     try {
@@ -144,8 +158,6 @@ class RecurringTransportService {
 
       for (const profile of profiles) {
         const tripTemplates = this.buildTripTemplates(profile, dateKey);
-        const profileAlreadyGenerated = profile.last_generated_for
-          && this.toIsoDate(profile.last_generated_for) === dateKey;
 
         for (const tripTemplate of tripTemplates) {
           await this.cleanupRecurringDuplicates(profile.employee_id, dateKey, tripTemplate.request_type);
@@ -164,10 +176,6 @@ class RecurringTransportService {
             existingDate === dateKey &&
             ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(existing.status)
           ) {
-            continue;
-          }
-
-          if (profileAlreadyGenerated) {
             continue;
           }
 
@@ -211,6 +219,7 @@ class RecurringTransportService {
           await this.cleanupRecurringDuplicates(profile.employee_id, dateKey, tripTemplate.request_type);
         }
 
+        await this.cleanupLegacyRecurringTrips(profile.employee_id, dateKey);
         await TransportProfile.markGenerated(profile.id, dateKey);
       }
 

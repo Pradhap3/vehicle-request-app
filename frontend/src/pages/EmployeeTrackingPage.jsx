@@ -145,7 +145,7 @@ const EmployeeTrackingPage = () => {
       const response = await transportAPI.getMyTracking();
       setTracking(response.data?.data || null);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to load tracking');
+      toast.error(error.response?.data?.error || t('tracking_load_failed'));
     } finally {
       setLoading(false);
     }
@@ -217,7 +217,7 @@ const EmployeeTrackingPage = () => {
     return path.find((point) => point.kind === 'ROUTE_STOP' || point.kind === 'DESTINATION') || null;
   }, [tracking?.routePath, tracking?.tripDirection]);
 
-  const fallbackCenter = mapBounds[0] || [13.2947, 78.2172];
+  const fallbackCenter = mapBounds[0] || [13.11, 77.99];
 
   if (loading) {
     return (
@@ -231,7 +231,7 @@ const EmployeeTrackingPage = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Track My Cab</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{t('employee_track_cab_title')}</h1>
           <p className="text-gray-500">{t('employee_track_cab_subtitle')}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10 text-center">
@@ -324,7 +324,7 @@ const EmployeeTrackingPage = () => {
                   <Popup>
                     <div className="min-w-[160px]">
                       <p className="font-semibold text-gray-800">{stop.stop_name}</p>
-                      <p className="text-sm text-gray-600">Stop {stop.stop_sequence}</p>
+                      <p className="text-sm text-gray-600">{t('tracking_stop_sequence')} {stop.stop_sequence}</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -335,8 +335,8 @@ const EmployeeTrackingPage = () => {
                   <Popup>
                     <div className="min-w-[180px]">
                       <p className="font-semibold text-gray-800">{currentCab.cab_number}</p>
-                      <p className="text-sm text-gray-600">{currentCab.driver_name || 'Driver assigned'}</p>
-                      <p className="text-xs text-gray-500 mt-1">Updated {formatTimestamp(currentCab.last_location_update)}</p>
+                      <p className="text-sm text-gray-600">{currentCab.driver_name || t('tracking_driver_assigned')}</p>
+                      <p className="text-xs text-gray-500 mt-1">{t('tracking_last_location_update')}: {formatTimestamp(currentCab.last_location_update)}</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -349,7 +349,7 @@ const EmployeeTrackingPage = () => {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
             <h2 className="font-semibold text-gray-800 mb-3">{t('tracking_trip_details')}</h2>
             <div className="space-y-2 text-sm text-gray-600">
-              <p className="flex items-center gap-2"><Clock size={14} /> {t('tracking_pickup')}: {tracking.trip.pickup_time ? formatTimestamp(tracking.trip.pickup_time) : 'Scheduled'}</p>
+              <p className="flex items-center gap-2"><Clock size={14} /> {t('tracking_pickup')}: {tracking.trip.pickup_time ? formatTimestamp(tracking.trip.pickup_time) : t('requests_not_set')}</p>
               <p className="flex items-center gap-2"><MapPin size={14} /> {tracking.trip.pickup_location}</p>
               <p className="flex items-center gap-2"><Navigation size={14} /> {tracking.trip.drop_location}</p>
               {tracking.route?.name && <p className="flex items-center gap-2"><Route size={14} /> {tracking.route.name}</p>}
@@ -371,7 +371,7 @@ const EmployeeTrackingPage = () => {
                     <p>{currentCab.status}</p>
                   </div>
                 </div>
-                <p>{currentCab.driver_name || tracking.trip.driver_name || 'Driver assigned'}</p>
+                <p>{currentCab.driver_name || tracking.trip.driver_name || t('tracking_driver_assigned')}</p>
                 {(currentCab.driver_phone || tracking.trip.driver_phone) && (
                   <a href={`tel:${currentCab.driver_phone || tracking.trip.driver_phone}`} className="inline-flex items-center gap-2 text-primary-600 hover:underline">
                     <Phone size={14} />
@@ -411,7 +411,7 @@ const EmployeeTrackingPage = () => {
                     </span>
                     <div>
                       <p className="font-medium text-gray-800">{stop.stop_name}</p>
-                      {stop.eta_offset_minutes ? <p className="text-xs text-gray-500">+{stop.eta_offset_minutes} min from route start</p> : null}
+                      {stop.eta_offset_minutes ? <p className="text-xs text-gray-500">+{stop.eta_offset_minutes} {t('tracking_eta_from_start')}</p> : null}
                     </div>
                   </div>
                 ))}

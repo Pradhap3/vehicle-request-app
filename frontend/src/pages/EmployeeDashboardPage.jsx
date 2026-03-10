@@ -49,12 +49,46 @@ export default function EmployeeDashboardPage() {
 
   const formatShiftLabel = (value) => {
     const normalized = String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
-    if (!normalized) return 'Not set';
+    if (!normalized) return t('requests_not_set');
     if (normalized === 'GENERAL' || normalized === 'G') return 'General';
     if (normalized === 'SHIFT_1' || normalized === 'SHIFT1' || normalized === 'A') return 'Shift 1';
     if (normalized === 'SHIFT_2' || normalized === 'SHIFT2' || normalized === 'B') return 'Shift 2';
     if (normalized === 'SHIFT_3' || normalized === 'SHIFT3' || normalized === 'C') return 'Shift 3';
     return value;
+  };
+
+  const normalizeVisibleRequests = (items = []) => {
+    const splitRecurringByDay = new Map();
+    items.forEach((request) => {
+      const dateKey = String(request.requested_time || request.pickup_time || request.created_at || '').slice(0, 10);
+      if (!splitRecurringByDay.has(dateKey)) {
+        splitRecurringByDay.set(dateKey, new Set());
+      }
+      if (['RECURRING_INBOUND', 'RECURRING_OUTBOUND'].includes(request.request_type)) {
+        splitRecurringByDay.get(dateKey).add(request.request_type);
+      }
+    });
+
+    const seen = new Set();
+    return items.filter((request) => {
+      const dateKey = String(request.requested_time || request.pickup_time || request.created_at || '').slice(0, 10);
+      if (request.request_type === 'RECURRING' && (splitRecurringByDay.get(dateKey)?.size || 0) > 0) {
+        return false;
+      }
+
+      const key = [
+        request.request_type || '',
+        dateKey,
+        request.pickup_location || '',
+        request.drop_location || ''
+      ].join('|');
+
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
   };
 
   const selectedProfileStop = profileStops.find((stop) => String(stop.stop_sequence) === String(profileForm.stop_sequence))
@@ -144,7 +178,7 @@ export default function EmployeeDashboardPage() {
       const requests = requestsRes.data?.data || [];
       const profileData = profileRes.data?.data || {};
 
-      setMyRequests(requests);
+      setMyRequests(normalizeVisibleRequests(requests));
       setNotifications(notificationsRes.data?.data || []);
       setTodayTrip(todayTripRes.data?.data || null);
       setTransportProfile(profileData.profile || null);
@@ -153,7 +187,7 @@ export default function EmployeeDashboardPage() {
       setProfileForm(hydrateProfileForm(profileData.profile));
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast.error('Failed to load data');
+      toast.error(t('employee_load_failed'));
     } finally {
       setLoading(false);
     }
@@ -164,7 +198,7 @@ export default function EmployeeDashboardPage() {
     setSubmitting(true);
     try {
       await requestAPI.create(requestForm);
-      toast.success('Adhoc request submitted successfully');
+      toast.success(t('employee_request_submitted'));
       setShowRequestModal(false);
       setRequestForm({
         pickup_date: format(new Date(), 'yyyy-MM-dd'),
@@ -191,7 +225,7 @@ export default function EmployeeDashboardPage() {
         route_id: profileForm.route_id || null,
         stop_sequence: profileForm.stop_sequence ? parseInt(profileForm.stop_sequence, 10) : null
       });
-      toast.success('Recurring transport profile saved');
+      toast.success(t('employee_profile_saved'));
       setShowProfileModal(false);
       fetchData();
     } catch (error) {
@@ -202,7 +236,7 @@ export default function EmployeeDashboardPage() {
   };
 
   const handleCancelRequest = async (requestId) => {
-    if (!confirm('Are you sure you want to cancel this request?')) return;
+    if (!confirm(t('employee_cancel_confirm'))) return;
     try {
       await requestAPI.cancel(requestId);
       toast.success('Request cancelled');
@@ -267,11 +301,11 @@ export default function EmployeeDashboardPage() {
           </button>
           <button onClick={() => setShowProfileModal(true)} className="btn-secondary flex items-center gap-2">
             <Route className="w-4 h-4" />
-            Recurring Profile
+            {t('profile_recurring')}
           </button>
           <button onClick={() => setShowRequestModal(true)} className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" />
-            Adhoc Request
+            {t('requests_adhoc')}
           </button>
         </div>
       </div>
@@ -279,23 +313,23 @@ export default function EmployeeDashboardPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Recurring Transport Profile</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('profile_recurring_saved')}</h2>
             {transportProfile ? (
               <div className="space-y-1 text-sm text-gray-600">
-                <p><strong>Route:</strong> {transportProfile.route_name || 'Not assigned yet'}</p>
+                <p><strong>{t('profile_route')}:</strong> {transportProfile.route_name || t('requests_not_set')}</p>
                 <p><strong>{t('profile_shift')}:</strong> {formatShiftLabel(transportProfile.shift_code)}</p>
-                <p><strong>Pickup:</strong> {transportProfile.pickup_location || 'Not set'}</p>
-                <p><strong>Drop:</strong> {transportProfile.drop_location || 'Not set'}</p>
-                <p><strong>Stop:</strong> {transportProfile.stop_name || 'Not set'}{transportProfile.stop_sequence ? ` (Seq ${transportProfile.stop_sequence})` : ''}</p>
-                <p><strong>Auto-generate:</strong> {transportProfile.auto_generate ? 'Enabled' : 'Disabled'}</p>
-                <p><strong>Effective:</strong> {transportProfile.effective_from ? String(transportProfile.effective_from).slice(0, 10) : 'Immediate'}{transportProfile.effective_to ? ` to ${String(transportProfile.effective_to).slice(0, 10)}` : ''}</p>
+                <p><strong>{t('profile_pickup')}:</strong> {transportProfile.pickup_location || t('requests_not_set')}</p>
+                <p><strong>{t('profile_drop')}:</strong> {transportProfile.drop_location || t('requests_not_set')}</p>
+                <p><strong>{t('profile_stop')}:</strong> {transportProfile.stop_name || t('requests_not_set')}{transportProfile.stop_sequence ? ` (Seq ${transportProfile.stop_sequence})` : ''}</p>
+                <p><strong>{t('profile_auto_generate')}:</strong> {transportProfile.auto_generate ? t('common_enabled') : t('common_disabled')}</p>
+                <p><strong>{t('profile_effective')}:</strong> {transportProfile.effective_from ? String(transportProfile.effective_from).slice(0, 10) : t('common_immediate')}{transportProfile.effective_to ? ` to ${String(transportProfile.effective_to).slice(0, 10)}` : ''}</p>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No recurring transport profile saved yet. Configure it once and the system will generate your daily commute automatically.</p>
+              <p className="text-sm text-gray-500">{t('profile_no_saved')}</p>
             )}
           </div>
           <button onClick={() => setShowProfileModal(true)} className="text-primary hover:underline text-sm">
-            {transportProfile ? 'Edit Profile' : 'Create Profile'}
+            {transportProfile ? t('profile_edit') : t('profile_create')}
           </button>
         </div>
       </div>
@@ -345,7 +379,7 @@ export default function EmployeeDashboardPage() {
                     className="inline-flex items-center gap-2 px-4 py-2 bg-white text-primary-700 rounded-lg font-medium hover:bg-primary-50"
                   >
                     <Navigation className="w-4 h-4" />
-                    Track Cab Live
+                    {t('employee_track_cab_title')}
                   </Link>
                 </div>
               )}
@@ -404,10 +438,10 @@ export default function EmployeeDashboardPage() {
                       </div>
                       <div className="text-sm text-gray-600 flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
-                        {request.pickup_location} → {request.drop_location}
+                        {request.pickup_location} -> {request.drop_location}
                       </div>
                       <div className="text-xs text-gray-500">
-                        Type: {request.request_type || 'ADHOC'}
+                        {t('requests_type')}: {request.request_type || 'ADHOC'}
                       </div>
                       {request.cab_number && (
                         <div className="text-sm text-green-600 flex items-center gap-1">
@@ -467,7 +501,7 @@ export default function EmployeeDashboardPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
             <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Recurring Transport Profile</h2>
+              <h2 className="text-lg font-semibold">{t('profile_recurring_saved')}</h2>
               <button onClick={() => setShowProfileModal(false)} className="text-gray-500 hover:text-gray-700">
                 <XCircle className="w-5 h-5" />
               </button>
@@ -475,32 +509,32 @@ export default function EmployeeDashboardPage() {
             <form onSubmit={handleSaveProfile} className="p-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Route</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_route')}</label>
                   <select value={profileForm.route_id} onChange={(e) => setProfileForm({ ...profileForm, route_id: e.target.value })} className="input">
-                    <option value="">Select route</option>
+                    <option value="">{t('profile_select_route')}</option>
                     {availableRoutes.map((route) => (
                       <option key={route.id} value={route.id}>{route.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Shift</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_shift')}</label>
                   <input type="text" value={profileForm.shift_code} onChange={(e) => setProfileForm({ ...profileForm, shift_code: e.target.value })} className="input" placeholder="SHIFT_1 / A / GENERAL" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Pickup location</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_pickup')}</label>
                   <input type="text" value={profileForm.pickup_location} onChange={(e) => setProfileForm({ ...profileForm, pickup_location: e.target.value })} className="input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Drop location</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_drop')}</label>
                   <input type="text" value={profileForm.drop_location} onChange={(e) => setProfileForm({ ...profileForm, drop_location: e.target.value })} className="input" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Preferred stop</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_preferred_stop')}</label>
                   {profileStops.length > 0 ? (
                     <select
                       value={profileForm.stop_sequence || ''}
@@ -514,7 +548,7 @@ export default function EmployeeDashboardPage() {
                       }}
                       className="input"
                     >
-                      <option value="">Select stop</option>
+                      <option value="">{t('profile_select_stop')}</option>
                       {profileStops.map((stop) => (
                         <option key={stop.id} value={stop.stop_sequence}>
                           {stop.stop_sequence}. {stop.stop_name}
@@ -526,7 +560,7 @@ export default function EmployeeDashboardPage() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Stop sequence</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_stop_sequence')}</label>
                   <input
                     type="number"
                     value={profileForm.stop_sequence}
@@ -539,21 +573,21 @@ export default function EmployeeDashboardPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Effective from</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_effective_from')}</label>
                   <input type="date" value={profileForm.effective_from} onChange={(e) => setProfileForm({ ...profileForm, effective_from: e.target.value })} className="input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Effective to</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile_effective_to')}</label>
                   <input type="date" value={profileForm.effective_to} onChange={(e) => setProfileForm({ ...profileForm, effective_to: e.target.value })} className="input" />
                 </div>
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={profileForm.auto_generate} onChange={(e) => setProfileForm({ ...profileForm, auto_generate: e.target.checked })} />
-                Generate daily commute automatically
+                {t('profile_generate_daily')}
               </label>
               {profileStops.length > 0 && (
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Route stops</p>
+                  <p className="text-sm font-medium text-gray-700 mb-2">{t('profile_route_stops')}</p>
                   <div className="space-y-1 text-sm text-gray-600">
                     {profileStops.map((stop) => (
                       <p key={stop.id} className={selectedProfileStop?.id === stop.id ? 'font-medium text-primary-700' : ''}>
@@ -564,9 +598,9 @@ export default function EmployeeDashboardPage() {
                 </div>
               )}
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowProfileModal(false)} className="btn-secondary flex-1">Cancel</button>
+                <button type="button" onClick={() => setShowProfileModal(false)} className="btn-secondary flex-1">{t('employee_cancel')}</button>
                 <button type="submit" disabled={profileSubmitting} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                  {profileSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : 'Save Profile'}
+                  {profileSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" />{t('requests_saving')}</> : t('profile_save')}
                 </button>
               </div>
             </form>
@@ -595,11 +629,11 @@ export default function EmployeeDashboardPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Request type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('request_type_label')}</label>
                 <select value={requestForm.request_type} onChange={(e) => setRequestForm({ ...requestForm, request_type: e.target.value })} className="input">
-                  <option value="ADHOC">Business / Adhoc</option>
-                  <option value="EMERGENCY">Emergency</option>
-                  <option value="LOCATION_CHANGE">Location Change</option>
+                  <option value="ADHOC">{t('request_type_business')}</option>
+                  <option value="EMERGENCY">{t('request_type_emergency')}</option>
+                  <option value="LOCATION_CHANGE">{t('request_type_location_change')}</option>
                 </select>
               </div>
               <div>

@@ -266,15 +266,31 @@ const RequestsPage = () => {
       .trim();
 
   const dedupeVisibleRequests = (items = []) => {
+    const splitRecurringByDay = new Map();
+    items.forEach((request) => {
+      const dateKey = String(request.requested_time || request.pickup_time || request.created_at || '').slice(0, 10);
+      if (!splitRecurringByDay.has(dateKey)) {
+        splitRecurringByDay.set(dateKey, new Set());
+      }
+      if (['RECURRING_INBOUND', 'RECURRING_OUTBOUND'].includes(String(request.request_type || '').toUpperCase())) {
+        splitRecurringByDay.get(dateKey).add(request.request_type);
+      }
+    });
+
     const seen = new Set();
     return items.filter((request) => {
-      const requestType = String(request.request_type || '');
-      if (!requestType.startsWith('RECURRING_')) {
+      const requestType = String(request.request_type || '').toUpperCase();
+      const requestDate = request.requested_time || request.pickup_time || request.created_at || '';
+      const dateKey = requestDate ? String(requestDate).slice(0, 10) : '';
+
+      if (requestType === 'RECURRING' && (splitRecurringByDay.get(dateKey)?.size || 0) > 0) {
+        return false;
+      }
+
+      if (!requestType.startsWith('RECURRING')) {
         return true;
       }
 
-      const requestDate = request.requested_time || request.pickup_time || request.created_at || '';
-      const dateKey = requestDate ? String(requestDate).slice(0, 10) : '';
       const key = [
         request.employee_id,
         dateKey,
