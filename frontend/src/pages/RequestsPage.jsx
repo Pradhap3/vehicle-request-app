@@ -258,6 +258,37 @@ const RequestsPage = () => {
   const specialApprovalTypes = new Set(['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE', 'SHIFT_CHANGE']);
   const cabAssignableSpecialTypes = new Set(['ADHOC', 'EMERGENCY', 'LOCATION_CHANGE']);
 
+  const formatRequestType = (requestType) =>
+    String(requestType || 'ADHOC')
+      .replace(/_/g, ' ')
+      .trim();
+
+  const dedupeVisibleRequests = (items = []) => {
+    const seen = new Set();
+    return items.filter((request) => {
+      const requestType = String(request.request_type || '');
+      if (!requestType.startsWith('RECURRING_')) {
+        return true;
+      }
+
+      const requestDate = request.requested_time || request.pickup_time || request.created_at || '';
+      const dateKey = requestDate ? String(requestDate).slice(0, 10) : '';
+      const key = [
+        request.employee_id,
+        dateKey,
+        requestType,
+        request.pickup_location || '',
+        request.drop_location || ''
+      ].join('|');
+
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -271,7 +302,8 @@ const RequestsPage = () => {
         routeAPI.getAll({ active: true })
       ]);
       
-      setRequests(requestsRes.data.data || requestsRes.data.requests || []);
+      const incomingRequests = requestsRes.data.data || requestsRes.data.requests || [];
+      setRequests(dedupeVisibleRequests(incomingRequests));
       setRoutes(routesRes.data.data || routesRes.data.routes || []);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -483,11 +515,11 @@ const RequestsPage = () => {
                     <User size={16} className="text-gray-400" />
                     {request.employee_name}
                     <span className="text-gray-400">•</span>
-                    <span className="text-gray-600">{request.route_name}</span>
+                    <span className="text-gray-600">{request.pickup_location || request.route_name} → {request.drop_location || request.route_name}</span>
                     {request.request_type && (
                       <>
                         <span className="text-gray-400">•</span>
-                        <span className="text-gray-600">{String(request.request_type).replace(/_/g, ' ')}</span>
+                        <span className="text-gray-600">{formatRequestType(request.request_type)}</span>
                       </>
                     )}
                   </div>
@@ -499,10 +531,10 @@ const RequestsPage = () => {
                         {format(new Date(request.pickup_time), 'MMM dd, yyyy HH:mm')}
                       </span>
                     )}
-                    {request.pickup_location && (
+                    {(request.pickup_location || request.drop_location) && (
                       <span className="flex items-center gap-1">
                         <MapPin size={14} />
-                        {request.pickup_location}
+                        {request.pickup_location || 'Not set'} → {request.drop_location || 'Not set'}
                       </span>
                     )}
                   </div>

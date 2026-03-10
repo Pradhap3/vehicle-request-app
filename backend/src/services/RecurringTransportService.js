@@ -101,6 +101,33 @@ class RecurringTransportService {
     ].filter((template) => template.pickupLocation && template.dropLocation);
   }
 
+  static async cleanupRecurringDuplicates(employeeId, dateKey, requestType) {
+    const recurringTrips = await CabRequest.findRecurringTripsForEmployeeOnDate(
+      employeeId,
+      dateKey,
+      [requestType]
+    );
+
+    if (recurringTrips.length <= 1) {
+      return recurringTrips[0] || null;
+    }
+
+    const sortedTrips = [...recurringTrips].sort((a, b) => {
+      const aTime = new Date(a.requested_time || a.pickup_time || a.created_at || 0).getTime();
+      const bTime = new Date(b.requested_time || b.pickup_time || b.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+
+    const keeper = sortedTrips[0];
+    for (const duplicateTrip of sortedTrips.slice(1)) {
+      if (['PENDING', 'APPROVED'].includes(duplicateTrip.status)) {
+        await CabRequest.cancel(duplicateTrip.id);
+      }
+    }
+
+    return keeper;
+  }
+
   static async ensureDailyTrips(targetDate = new Date(), { io } = {}) {
     const dateKey = this.toIsoDate(targetDate);
     try {
@@ -109,20 +136,11 @@ class RecurringTransportService {
 
       for (const profile of profiles) {
         const tripTemplates = this.buildTripTemplates(profile, dateKey);
+        const profileAlreadyGenerated = profile.last_generated_for
+          && this.toIsoDate(profile.last_generated_for) === dateKey;
 
         for (const tripTemplate of tripTemplates) {
-          const recurringTrips = await CabRequest.findRecurringTripsForEmployeeOnDate(
-            profile.employee_id,
-            dateKey,
-            [tripTemplate.request_type]
-          );
-          if (recurringTrips.length > 1) {
-            for (const duplicateTrip of recurringTrips.slice(1)) {
-              if (['PENDING', 'APPROVED'].includes(duplicateTrip.status)) {
-                await CabRequest.cancel(duplicateTrip.id);
-              }
-            }
-          }
+          await this.cleanupRecurringDuplicates(profile.employee_id, dateKey, tripTemplate.request_type);
 
           const existing = await CabRequest.findActiveTripForEmployeeOnDate(
             profile.employee_id,
@@ -138,6 +156,10 @@ class RecurringTransportService {
             existingDate === dateKey &&
             ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(existing.status)
           ) {
+            continue;
+          }
+
+          if (profileAlreadyGenerated) {
             continue;
           }
 
@@ -177,6 +199,7 @@ class RecurringTransportService {
           }
 
           generatedCount += 1;
+          await this.cleanupRecurringDuplicates(profile.employee_id, dateKey, tripTemplate.request_type);
         }
 
         await TransportProfile.markGenerated(profile.id, dateKey);
