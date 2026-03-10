@@ -38,7 +38,12 @@ export const SocketProvider = ({ children }) => {
       auth: {
         token: localStorage.getItem('token')
       },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000
     });
 
     newSocket.on('connect', () => {

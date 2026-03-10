@@ -21,15 +21,19 @@ class RecurringTransportService {
       let generatedCount = 0;
 
       for (const profile of profiles) {
-        const existing = await CabRequest.findConflictingRequest(
-          profile.employee_id,
-          this.combineDateAndTime(dateKey, profile.standard_pickup_time || '08:00:00'),
-          null,
-          24 * 60
-        );
+        const recurringTrips = await CabRequest.findRecurringTripsForEmployeeOnDate(profile.employee_id, dateKey);
+        if (recurringTrips.length > 1) {
+          for (const duplicateTrip of recurringTrips.slice(1)) {
+            if (['PENDING', 'APPROVED'].includes(duplicateTrip.status)) {
+              await CabRequest.cancel(duplicateTrip.id);
+            }
+          }
+        }
+
+        const existing = await CabRequest.findActiveTripForEmployeeOnDate(profile.employee_id, dateKey);
 
         const existingDate = existing?.requested_time ? new Date(existing.requested_time).toISOString().slice(0, 10) : null;
-        if (existing && existingDate === dateKey && ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS'].includes(existing.status)) {
+        if (existing && existingDate === dateKey && ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(existing.status)) {
           await TransportProfile.markGenerated(profile.id, dateKey);
           continue;
         }

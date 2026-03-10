@@ -6,7 +6,7 @@ import { Eye, EyeOff, Lock, Mail, AlertCircle } from 'lucide-react';
 import { authAPI } from '../services/api';
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [driverName, setDriverName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,14 +24,14 @@ const LoginPage = () => {
     e.preventDefault();
     setError('');
     
-    if (!email || !password) {
+    if (!driverName || !password) {
       setError(t('login_err_required'));
       return;
     }
 
     setLoading(true);
     
-    const result = await login(email, password);
+    const result = await login(driverName, password);
     
     setLoading(false);
     
@@ -147,19 +147,19 @@ const LoginPage = () => {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('login_email')} <span className="text-red-500">*</span>
+                <label htmlFor="driverName" className="block text-sm font-medium text-gray-700 mb-2">
+                  Driver Name <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                   <input
-                    type="email"
-                    id="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text"
+                    id="driverName"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-                    placeholder={t('login_email_placeholder')}
-                    autoComplete="email"
+                    placeholder="Enter driver name"
+                    autoComplete="username"
                     disabled={loading}
                   />
                 </div>

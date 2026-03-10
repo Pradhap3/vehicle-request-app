@@ -80,7 +80,7 @@ const formatTimestamp = (value) => {
 };
 
 const EmployeeTrackingPage = () => {
-  const { driverLocations, connected } = useSocket();
+  const { driverLocations } = useSocket();
   const [tracking, setTracking] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -170,10 +170,7 @@ const EmployeeTrackingPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Track My Cab</h1>
-          <p className="text-gray-500 flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-            {connected ? 'Real-time updates active' : 'Realtime connection retrying'}
-          </p>
+          <p className="text-gray-500">Live route view for your assigned commute cab.</p>
         </div>
         <div className="flex gap-3">
           <Link to="/employee" className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-700">

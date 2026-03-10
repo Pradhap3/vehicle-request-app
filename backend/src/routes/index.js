@@ -19,7 +19,8 @@ const isUuidOrInt = (value) =>
 
 // ==================== AUTH ROUTES ====================
 router.post('/auth/login', [
-  body('email').isEmail().normalizeEmail(),
+  body('email').optional().isString().trim(),
+  body('identifier').optional().isString().trim(),
   body('password').notEmpty()
 ], authController.login);
 router.get('/auth/microsoft/start', authController.getMicrosoftStartUrl);

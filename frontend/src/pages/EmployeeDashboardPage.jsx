@@ -25,7 +25,7 @@ const emptyProfileForm = () => ({
 
 export default function EmployeeDashboardPage() {
   const { t } = useLanguage();
-  const { socket, connected } = useSocket();
+  const { socket } = useSocket();
   const [myRequests, setMyRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [todayTrip, setTodayTrip] = useState(null);
@@ -46,6 +46,10 @@ export default function EmployeeDashboardPage() {
     request_type: 'ADHOC'
   });
   const [profileForm, setProfileForm] = useState(emptyProfileForm());
+
+  const selectedProfileStop = profileStops.find((stop) => String(stop.stop_sequence) === String(profileForm.stop_sequence))
+    || profileStops.find((stop) => stop.stop_name === profileForm.stop_name)
+    || null;
 
   const hydrateProfileForm = (profile) => ({
     route_id: profile?.route_id || '',
@@ -262,11 +266,6 @@ export default function EmployeeDashboardPage() {
         </div>
       </div>
 
-      <div className={`flex items-center gap-2 text-sm ${connected ? 'text-green-600' : 'text-red-600'}`}>
-        <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-        {connected ? t('employee_connected_realtime') : t('employee_disconnected_reconnecting')}
-      </div>
-
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -279,6 +278,7 @@ export default function EmployeeDashboardPage() {
                 <p><strong>Drop:</strong> {transportProfile.drop_location || 'Not set'}</p>
                 <p><strong>Stop:</strong> {transportProfile.stop_name || 'Not set'}{transportProfile.stop_sequence ? ` (Seq ${transportProfile.stop_sequence})` : ''}</p>
                 <p><strong>Auto-generate:</strong> {transportProfile.auto_generate ? 'Enabled' : 'Disabled'}</p>
+                <p><strong>Effective:</strong> {transportProfile.effective_from ? String(transportProfile.effective_from).slice(0, 10) : 'Immediate'}{transportProfile.effective_to ? ` to ${String(transportProfile.effective_to).slice(0, 10)}` : ''}</p>
               </div>
             ) : (
               <p className="text-sm text-gray-500">No recurring transport profile saved yet. Configure it once and the system will generate your daily commute automatically.</p>
@@ -491,11 +491,40 @@ export default function EmployeeDashboardPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Preferred stop</label>
-                  <input type="text" value={profileForm.stop_name} onChange={(e) => setProfileForm({ ...profileForm, stop_name: e.target.value })} className="input" placeholder="Kolar / Bangarpet" />
+                  {profileStops.length > 0 ? (
+                    <select
+                      value={profileForm.stop_sequence || ''}
+                      onChange={(e) => {
+                        const selected = profileStops.find((stop) => String(stop.stop_sequence) === e.target.value);
+                        setProfileForm({
+                          ...profileForm,
+                          stop_name: selected?.stop_name || '',
+                          stop_sequence: selected ? String(selected.stop_sequence) : ''
+                        });
+                      }}
+                      className="input"
+                    >
+                      <option value="">Select stop</option>
+                      {profileStops.map((stop) => (
+                        <option key={stop.id} value={stop.stop_sequence}>
+                          {stop.stop_sequence}. {stop.stop_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" value={profileForm.stop_name} onChange={(e) => setProfileForm({ ...profileForm, stop_name: e.target.value })} className="input" placeholder="Kolar / Bangarpet" />
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stop sequence</label>
-                  <input type="number" value={profileForm.stop_sequence} onChange={(e) => setProfileForm({ ...profileForm, stop_sequence: e.target.value })} className="input" placeholder="1" />
+                  <input
+                    type="number"
+                    value={profileForm.stop_sequence}
+                    onChange={(e) => setProfileForm({ ...profileForm, stop_sequence: e.target.value })}
+                    className="input"
+                    placeholder="1"
+                    readOnly={profileStops.length > 0}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -517,7 +546,9 @@ export default function EmployeeDashboardPage() {
                   <p className="text-sm font-medium text-gray-700 mb-2">Route stops</p>
                   <div className="space-y-1 text-sm text-gray-600">
                     {profileStops.map((stop) => (
-                      <p key={stop.id}>{stop.stop_sequence}. {stop.stop_name}</p>
+                      <p key={stop.id} className={selectedProfileStop?.id === stop.id ? 'font-medium text-primary-700' : ''}>
+                        {stop.stop_sequence}. {stop.stop_name}
+                      </p>
                     ))}
                   </div>
                 </div>

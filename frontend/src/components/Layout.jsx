@@ -198,10 +198,12 @@ const Layout = () => {
 
         {/* Bottom section */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-primary-400">
-          <div className="flex items-center gap-2 text-xs text-primary-200 mb-3">
-            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
-            {connected ? 'Connected' : 'Disconnected'}
-          </div>
+          {!isEmployee && (
+            <div className="flex items-center gap-2 text-xs text-primary-200 mb-3">
+              <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
+              {connected ? 'Connected' : 'Disconnected'}
+            </div>
+          )}
           <p className="text-xs text-primary-300">AISIN Corporation</p>
         </div>
       </aside>

@@ -46,9 +46,9 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (identifier, password) => {
     try {
-      const response = await authAPI.login({ email, password });
+      const response = await authAPI.login({ identifier, email: identifier, password });
       // Handle nested response: response.data.data
       const responseData = response.data.data || response.data;
       const { user: userData, token, refreshToken } = responseData;

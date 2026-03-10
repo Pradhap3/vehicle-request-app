@@ -177,22 +177,36 @@ exports.login = async (req, res) => {
       });
     }
 
-    const { email, password } = req.body;
+    const loginIdentifier = String(req.body.identifier || req.body.email || '').trim();
+    const { password } = req.body;
     await ensureDbConnection();
 
-    // Find user by email
-    const user = await User.findByEmail(email);
+    if (!loginIdentifier || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Driver name and password are required'
+      });
+    }
+
+    let user = null;
+    const looksLikeEmail = loginIdentifier.includes('@');
+
+    if (looksLikeEmail) {
+      user = await User.findByEmail(loginIdentifier);
+    } else {
+      user = await User.findDriverByName(loginIdentifier);
+    }
     
     if (!user) {
-      logger.warn(`Login attempt for non-existent email: ${email}`);
+      logger.warn(`Login attempt for unknown identifier: ${loginIdentifier}`);
       return res.status(401).json({
         success: false,
-        error: 'Invalid email or password'
+        error: 'Invalid driver name or password'
       });
     }
 
     if (!user.is_active) {
-      logger.warn(`Login attempt for inactive user: ${email}`);
+      logger.warn(`Login attempt for inactive user: ${loginIdentifier}`);
       return res.status(401).json({
         success: false,
         error: 'Account is deactivated. Please contact administrator.'
@@ -206,20 +220,27 @@ exports.login = async (req, res) => {
       });
     }
 
+    if (!looksLikeEmail && !['CAB_DRIVER', 'DRIVER'].includes(user.role)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Only drivers can use name-based login.'
+      });
+    }
+
     // Verify password
     const isValidPassword = await User.verifyPassword(password, user.password_hash);
     
     if (!isValidPassword) {
-      logger.warn(`Invalid password attempt for: ${email}`);
+      logger.warn(`Invalid password attempt for: ${loginIdentifier}`);
       return res.status(401).json({
         success: false,
-        error: 'Invalid email or password'
+        error: 'Invalid driver name or password'
       });
     }
 
     const authResult = await completeLogin(user);
 
-    logger.info(`User logged in: ${email}`);
+    logger.info(`User logged in: ${loginIdentifier}`);
 
     res.json({
       success: true,
@@ -227,6 +248,12 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
+    if (error.code === 'DRIVER_NAME_NOT_UNIQUE') {
+      return res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
     if (isDatabaseUnavailableError(error)) {
       return res.status(503).json({
         success: false,

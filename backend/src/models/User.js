@@ -158,6 +158,34 @@ class User {
     }
   }
 
+  static async findDriverByName(name) {
+    try {
+      const pool = getPool();
+      const schema = await this.getUsersSchema();
+      const result = await pool.request()
+        .input('name', sql.NVarChar(255), String(name).trim())
+        .query(`
+          SELECT ${this.getUserSelectList(schema, { includePassword: true })}
+          FROM users
+          WHERE role IN ('CAB_DRIVER', 'DRIVER')
+            AND is_active = 1
+            AND LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(@name)))
+          ORDER BY id
+        `);
+
+      if (result.recordset.length > 1) {
+        const error = new Error('Multiple active drivers share this name. Use a unique driver name or switch to username.');
+        error.code = 'DRIVER_NAME_NOT_UNIQUE';
+        throw error;
+      }
+
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('Error finding driver by name:', error);
+      throw error;
+    }
+  }
+
   static async create(userData) {
     try {
       const pool = getPool();

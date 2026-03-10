@@ -666,6 +666,63 @@ class CabRequest {
       return null;
     }
   }
+
+  static async findActiveTripForEmployeeOnDate(employeeId, targetDate) {
+    try {
+      const schema = await this.getCabRequestSchema();
+      const timeCol = schema.requestTimeColumn || 'created_at';
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'employee_id', employeeId);
+      request.input('target_date', sql.Date, targetDate);
+
+      const result = await request.query(`
+        SELECT *
+        FROM cab_requests
+        WHERE employee_id = @employee_id
+          AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')
+          AND ${timeCol} IS NOT NULL
+          AND CAST(${timeCol} AS DATE) = @target_date
+        ORDER BY created_at DESC
+      `);
+
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('Error finding active trip for employee/date:', error);
+      return null;
+    }
+  }
+
+  static async findRecurringTripsForEmployeeOnDate(employeeId, targetDate) {
+    try {
+      const schema = await this.getCabRequestSchema();
+      const timeCol = schema.requestTimeColumn || 'created_at';
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'employee_id', employeeId);
+      request.input('target_date', sql.Date, targetDate);
+
+      const requestTypeClause = schema.hasColumn('request_type')
+        ? `AND request_type = 'RECURRING'`
+        : '';
+
+      const result = await request.query(`
+        SELECT *
+        FROM cab_requests
+        WHERE employee_id = @employee_id
+          ${requestTypeClause}
+          AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')
+          AND ${timeCol} IS NOT NULL
+          AND CAST(${timeCol} AS DATE) = @target_date
+        ORDER BY created_at DESC
+      `);
+
+      return result.recordset || [];
+    } catch (error) {
+      logger.error('Error finding recurring trips for employee/date:', error);
+      return [];
+    }
+  }
 }
 
 module.exports = CabRequest;
