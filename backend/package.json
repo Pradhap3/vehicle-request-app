@@ -1,7 +1,7 @@
 {
   "name": "aisin-fleet-backend",
   "version": "2.0.0",
-  "description": "AISIN Fleet Management System - Production Ready",
+  "description": "AISIN Cab Request Management - Production Ready",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

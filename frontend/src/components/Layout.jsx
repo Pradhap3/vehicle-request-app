@@ -170,7 +170,7 @@ const Layout = () => {
             <span className="text-primary-500 font-bold text-xl">A</span>
           </div>
           <div>
-            <h1 className="font-bold text-lg">AISIN Fleet</h1>
+            <h1 className="font-bold text-lg">AISIN Cab Request</h1>
             <p className="text-xs text-primary-200">{user?.role?.replace('_', ' ')}</p>
           </div>
         </div>
@@ -204,7 +204,7 @@ const Layout = () => {
               {connected ? t('common_connected') : t('common_disconnected')}
             </div>
           )}
-          <p className="text-xs text-primary-300">AISIN Corporation</p>
+          <p className="text-xs text-primary-300">AISIN Automotive Karnataka Pvt. Ltd.</p>
         </div>
       </aside>
 

@@ -105,7 +105,7 @@ app.use('/api', routes);
 // Root route
 app.get('/', (req, res) => {
   res.json({
-    name: 'AISIN Fleet Management System',
+    name: 'AISIN Cab Request Management',
     version: '2.0.0',
     status: 'running',
     environment: process.env.NODE_ENV || 'development'
@@ -256,7 +256,7 @@ const startServer = async () => {
     server.listen(PORT, () => {
       console.log('');
       console.log('='.repeat(50));
-      console.log('  AISIN Fleet Management System');
+      console.log('  AISIN Cab Request Management');
       console.log('='.repeat(50));
       console.log(`  Server: http://localhost:${PORT}`);
       console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);

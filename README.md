@@ -1,4 +1,4 @@
-# AISIN Fleet Management System
+# AISIN Cab Request Management
 
 A production-ready fleet management system for managing company cab transportation with AI/ML-powered smart allocation, real-time tracking, and email notifications.
 
@@ -427,8 +427,8 @@ For issues or questions:
 
 ## 📜 License
 
-Proprietary - AISIN Corporation
+Proprietary - AISIN Automotive Karnataka Pvt. Ltd.
 
 ---
 
-**Built with ❤️ for AISIN Fleet Management**
+**Built for AISIN Cab Request Management**

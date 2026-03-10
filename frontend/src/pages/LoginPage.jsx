@@ -102,7 +102,7 @@ const LoginPage = () => {
         </div>
         
         <div>
-          <p className="text-sm text-primary-300">AISIN Corporation</p>
+          <p className="text-sm text-primary-300">AISIN Automotive Karnataka Pvt. Ltd.</p>
         </div>
       </div>
 
@@ -114,7 +114,7 @@ const LoginPage = () => {
             <div className="w-10 h-10 bg-primary-500 rounded-xl flex items-center justify-center">
               <span className="text-white font-bold text-xl">A</span>
             </div>
-            <span className="font-bold text-xl text-primary-500 italic">AISIN Fleet</span>
+            <span className="font-bold text-xl text-primary-500 italic">AISIN Cab Request</span>
           </div>
 
           <div className="bg-white rounded-2xl shadow-lg p-8">
@@ -218,7 +218,7 @@ const LoginPage = () => {
 
           {/* Footer */}
           <p className="text-center text-sm text-gray-400 mt-8">
-            © {new Date().getFullYear()} AISIN Corporation. All rights reserved.
+            © {new Date().getFullYear()} AISIN Automotive Karnataka Pvt. Ltd. All rights reserved.
           </p>
         </div>
       </div>

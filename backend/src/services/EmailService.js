@@ -67,7 +67,7 @@ class EmailService {
 
     try {
       const mailOptions = {
-        from: `"AISIN Fleet" <${process.env.EMAIL_FROM}>`,
+        from: `"AISIN Cab Request Management" <${process.env.EMAIL_FROM}>`,
         to,
         subject,
         html,
@@ -109,7 +109,7 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <h1>ðŸš— AISIN Fleet Management</h1>
+              <h1>ðŸš— AISIN Cab Request Management</h1>
             </div>
             <div class="content">
               <h2>Your Cab Request is Confirmed!</h2>
@@ -125,7 +125,7 @@ class EmailService {
               <p>Please be ready 5 minutes before the scheduled pickup time.</p>
             </div>
             <div class="footer">
-              <p>AISIN Corporation - Fleet Management System</p>
+              <p>AISIN Automotive Karnataka Pvt. Ltd. - Cab Request Management</p>
             </div>
           </div>
         </body>
@@ -154,7 +154,7 @@ class EmailService {
         <body>
           <div class="container">
             <div class="header">
-              <h1>ðŸš— AISIN Fleet Management</h1>
+              <h1>ðŸš— AISIN Cab Request Management</h1>
             </div>
             <div class="content">
               <h2>Cab Assigned to Your Request</h2>
@@ -171,7 +171,7 @@ class EmailService {
               <p>Please be at the pickup point 5 minutes early.</p>
             </div>
             <div class="footer">
-              <p>AISIN Corporation - Fleet Management System</p>
+              <p>AISIN Automotive Karnataka Pvt. Ltd. - Cab Request Management</p>
             </div>
           </div>
         </body>
@@ -211,7 +211,7 @@ class EmailService {
               <p>We apologize for the inconvenience. Your driver will update you on the exact arrival time.</p>
             </div>
             <div class="footer">
-              <p>AISIN Corporation - Fleet Management System</p>
+              <p>AISIN Automotive Karnataka Pvt. Ltd. - Cab Request Management</p>
             </div>
           </div>
         </body>
@@ -258,7 +258,7 @@ class EmailService {
               <p>Please ensure your location is enabled and start on time.</p>
             </div>
             <div class="footer">
-              <p>AISIN Corporation - Fleet Management System</p>
+              <p>AISIN Automotive Karnataka Pvt. Ltd. - Cab Request Management</p>
             </div>
           </div>
         </body>

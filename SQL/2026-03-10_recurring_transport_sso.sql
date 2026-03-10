@@ -1,5 +1,5 @@
 /*
-  AISIN Fleet Management System
+  AISIN Cab Request Management
   Deployment SQL for:
   - Microsoft SSO user linkage
   - recurring transport profiles

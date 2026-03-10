@@ -24,7 +24,7 @@ const translations = {
     common_connected: 'Connected',
     common_disconnected: 'Disconnected',
     dash_title: 'Dashboard',
-    dash_welcome: 'Welcome to AISIN Fleet Management',
+    dash_welcome: 'Welcome to AISIN Cab Request Management',
     dash_refresh: 'Refresh',
     dash_total_users: 'Total Users',
     dash_total_cabs: 'Total Cabs',
@@ -42,7 +42,7 @@ const translations = {
     dash_live_tracking: 'Live Tracking',
     dash_add_new_user: 'Add New User'
     ,
-    login_title: 'Fleet Management System',
+    login_title: 'AISIN Cab Request Management',
     login_subtitle: 'Vehicle request management with real-time tracking',
     login_welcome: 'Welcome',
     login_signin: 'Sign in to continue',
