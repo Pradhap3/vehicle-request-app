@@ -2,6 +2,7 @@
 // Simplified to work with actual database schema
 const { sql, getPool } = require('../config/database');
 const logger = require('../utils/logger');
+const RouteOptimizationService = require('../services/RouteOptimizationService');
 
 class SmartAllocationService {
   static schemaCache = null;
@@ -137,9 +138,33 @@ class SmartAllocationService {
       }
       const assignmentWindowColumn = schema.plannedAssignmentColumn || schema.requestTimeColumn || 'created_at';
       const requestsResult = await requestsReq.query(`
-          SELECT cr.*, e.name as employee_name
+          SELECT
+            cr.*,
+            e.name as employee_name,
+            ep.pickup_latitude,
+            ep.pickup_longitude,
+            ep.drop_latitude,
+            ep.drop_longitude,
+            ep.stop_sequence,
+            ep.stop_name,
+            selected_stop.latitude AS stop_latitude,
+            selected_stop.longitude AS stop_longitude
           FROM cab_requests cr
           INNER JOIN users e ON cr.employee_id = e.id
+          LEFT JOIN employee_transport_profiles ep
+            ON ep.employee_id = cr.employee_id
+           AND ep.is_active = 1
+          OUTER APPLY (
+            SELECT TOP 1 rs.latitude, rs.longitude
+            FROM route_stops rs
+            WHERE rs.route_id = cr.route_id
+              AND rs.is_active = 1
+              AND (
+                (ep.stop_sequence IS NOT NULL AND rs.stop_sequence = ep.stop_sequence)
+                OR (ep.stop_name IS NOT NULL AND LOWER(LTRIM(RTRIM(rs.stop_name))) = LOWER(LTRIM(RTRIM(ep.stop_name))))
+              )
+            ORDER BY CASE WHEN ep.stop_sequence IS NOT NULL AND rs.stop_sequence = ep.stop_sequence THEN 0 ELSE 1 END, rs.stop_sequence
+          ) selected_stop
           WHERE cr.route_id = @route_id AND cr.status = 'PENDING'
             ${schema.requestTypeColumn ? `AND ${this.buildRecurringTypeClause(`cr.${schema.requestTypeColumn}`)}` : ''}
             ${
@@ -205,51 +230,45 @@ class SmartAllocationService {
         return { success: false, message: 'No cabs available', allocations: [] };
       }
       
-      // Simple allocation: assign requests to cabs based on capacity
+      const optimizedAssignments = RouteOptimizationService.planAssignments(pendingRequests, availableCabs);
       const allocations = [];
-      let cabIndex = 0;
-      let currentCabPassengers = 0;
-      
-      for (const request of pendingRequests) {
-        if (cabIndex >= availableCabs.length) break;
-        
-        const cab = availableCabs[cabIndex];
-        
-        if (currentCabPassengers >= cab.capacity) {
-          cabIndex++;
-          currentCabPassengers = 0;
-          if (cabIndex >= availableCabs.length) break;
-        }
-        
-        // Approve the request
-        const approveReq = pool.request();
-        this.bindFlexibleId(approveReq, 'id', request.id);
-        if (schema.assignmentColumn) {
-          this.bindFlexibleId(approveReq, 'cab_id', availableCabs[cabIndex].id);
-        }
-        await approveReq
-          .query(`
+
+      for (const assignment of optimizedAssignments) {
+        for (const request of assignment.cluster.requests) {
+          const approveReq = pool.request();
+          this.bindFlexibleId(approveReq, 'id', request.id);
+          if (schema.assignmentColumn) {
+            this.bindFlexibleId(approveReq, 'cab_id', assignment.cab.id);
+          }
+          if (schema.plannedAssignmentColumn) {
+            approveReq.input('assigned_at', sql.DateTime, new Date());
+          }
+
+          await approveReq.query(`
             UPDATE cab_requests
             SET status = 'APPROVED'
                 ${schema.assignmentColumn ? `, ${schema.assignmentColumn} = @cab_id` : ''}
+                ${schema.plannedAssignmentColumn ? `, ${schema.plannedAssignmentColumn} = @assigned_at` : ''}
             WHERE id = @id
           `);
-        
-        allocations.push({
-          requestId: request.id,
-          employeeName: request.employee_name,
-          cabNumber: availableCabs[cabIndex].cab_number,
-          cabId: availableCabs[cabIndex].id
-        });
-        
-        currentCabPassengers++;
+
+          allocations.push({
+            requestId: request.id,
+            employeeName: request.employee_name,
+            cabNumber: assignment.cab.cab_number,
+            cabId: assignment.cab.id,
+            plannedSequence: assignment.cluster.requests.findIndex((row) => row.id === request.id) + 1,
+            clusterSize: assignment.cluster.passengerCount,
+            routeDistanceKm: Number(assignment.cluster.routeDistanceKm.toFixed(2))
+          });
+        }
       }
       
       logger.info(`Auto-allocated ${allocations.length} requests for route ${routeId}`);
       
       return {
         success: true,
-        message: `Allocated ${allocations.length} requests to ${cabIndex + 1} cab(s)`,
+        message: `Allocated ${allocations.length} requests to ${optimizedAssignments.length} cab(s)`,
         allocations
       };
     } catch (error) {
@@ -401,30 +420,28 @@ class SmartAllocationService {
         .filter((c) => c.free > 0)
         .sort((a, b) => b.free - a.free);
 
+      const optimizedAssignments = RouteOptimizationService.planAssignments(waiting, cabState);
       const reassigned = [];
-      let cabIndex = 0;
 
-      for (const req of waiting) {
-        while (cabIndex < cabState.length && cabState[cabIndex].free <= 0) cabIndex++;
-        if (cabIndex >= cabState.length) break;
+      for (const assignment of optimizedAssignments) {
+        for (const req of assignment.cluster.requests) {
+          const updateReq = pool.request();
+          this.bindFlexibleId(updateReq, 'id', req.id);
+          this.bindFlexibleId(updateReq, 'cab_id', assignment.cab.id);
+          await updateReq.query(`
+            UPDATE cab_requests
+            SET ${schema.assignmentColumn} = @cab_id,
+                status = 'APPROVED'
+            WHERE id = @id
+          `);
 
-        const cab = cabState[cabIndex];
-        const updateReq = pool.request();
-        this.bindFlexibleId(updateReq, 'id', req.id);
-        this.bindFlexibleId(updateReq, 'cab_id', cab.id);
-        await updateReq.query(`
-          UPDATE cab_requests
-          SET ${schema.assignmentColumn} = @cab_id,
-              status = 'APPROVED'
-          WHERE id = @id
-        `);
-
-        cab.free -= 1;
-        reassigned.push({
-          requestId: req.id,
-          cabId: cab.id,
-          cabNumber: cab.cab_number
-        });
+          reassigned.push({
+            requestId: req.id,
+            cabId: assignment.cab.id,
+            cabNumber: assignment.cab.cab_number,
+            plannedSequence: assignment.cluster.requests.findIndex((row) => row.id === req.id) + 1
+          });
+        }
       }
 
       logger.info(`Reassigned ${reassigned.length} waiting passengers on route ${routeId}`);

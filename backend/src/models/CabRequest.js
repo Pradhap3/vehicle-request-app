@@ -555,13 +555,26 @@ class CabRequest {
       }
 
       const result = await request.query(`
-        SELECT cr.*, e.name as employee_name, e.phone as employee_phone
+        SELECT
+          cr.*,
+          e.name as employee_name,
+          e.phone as employee_phone,
+          ep.stop_sequence AS profile_stop_sequence
         FROM cab_requests cr
         LEFT JOIN users e ON cr.employee_id = e.id
+        LEFT JOIN employee_transport_profiles ep
+          ON ep.employee_id = cr.employee_id
+         AND ep.is_active = 1
         WHERE cr.${schema.assignmentColumn} = @cab_id
           AND cr.status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS')
           ${dateFilter}
-        ORDER BY cr.${timeCol} ASC
+        ORDER BY
+          CASE
+            WHEN ep.stop_sequence IS NULL THEN 1
+            WHEN LOWER(COALESCE(cr.request_type, '')) = 'recurring_outbound' THEN -ep.stop_sequence
+            ELSE ep.stop_sequence
+          END ASC,
+          cr.${timeCol} ASC
       `);
 
       return result.recordset.map((row) => this.normalizeRecord(row));
