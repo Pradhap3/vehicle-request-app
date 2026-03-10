@@ -2,13 +2,39 @@
 const winston = require('winston');
 const path = require('path');
 
+const safeJsonStringify = (value) => {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (key, currentValue) => {
+    if (typeof currentValue === 'object' && currentValue !== null) {
+      if (seen.has(currentValue)) {
+        return '[Circular]';
+      }
+      seen.add(currentValue);
+    }
+
+    if (typeof currentValue === 'function') {
+      return `[Function ${currentValue.name || 'anonymous'}]`;
+    }
+
+    if (currentValue instanceof Error) {
+      return {
+        name: currentValue.name,
+        message: currentValue.message,
+        stack: currentValue.stack
+      };
+    }
+
+    return currentValue;
+  });
+};
+
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
   winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
     let log = `${timestamp} [${level.toUpperCase()}]: ${message}`;
     if (Object.keys(meta).length > 0) {
-      log += ` ${JSON.stringify(meta)}`;
+      log += ` ${safeJsonStringify(meta)}`;
     }
     if (stack) {
       log += `\n${stack}`;
