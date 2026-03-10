@@ -510,6 +510,12 @@ const DriverDashboardPage = () => {
               {t('driver_estimated_time')}: {dashboard.route.estimated_time_minutes} {t('driver_minutes')}
             </p>
           )}
+          {dashboard.optimization?.routeDurationMinutes ? (
+            <p className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+              <Navigation size={14} />
+              Optimized duration: {dashboard.optimization.routeDurationMinutes} min, {dashboard.optimization.routeDistanceKm} km
+            </p>
+          ) : null}
           {dashboard.route.stops?.length > 0 && (
             <div className="mt-4 pt-4 border-t border-gray-100">
               <p className="text-sm font-medium text-gray-700 mb-2">Stops</p>

@@ -5,6 +5,7 @@ const CabRequest = require('../models/CabRequest');
 const Route = require('../models/Route');
 const RouteStop = require('../models/RouteStop');
 const RecurringTransportService = require('../services/RecurringTransportService');
+const RouteOptimizationService = require('../services/RouteOptimizationService');
 const logger = require('../utils/logger');
 
 // Get all cabs
@@ -302,19 +303,36 @@ exports.getDriverDashboard = async (req, res) => {
     }
 
     const today = new Date().toISOString().split('T')[0];
-    const assignments = await CabRequest.getAssignedRequestsForCab(cab.id, today);
+    const assignments = RouteOptimizationService.optimizeSequence(
+      await CabRequest.getAssignedRequestsForCab(cab.id, today)
+    );
     const primaryRouteId = assignments[0]?.route_id || null;
     const route = primaryRouteId ? await Route.findById(primaryRouteId) : null;
     const stops = primaryRouteId ? await RouteStop.findByRouteId(primaryRouteId) : [];
+    const routeMetrics = assignments.length > 0
+      ? RouteOptimizationService.buildRouteMetrics(assignments, assignments[0]?.pickup_time || new Date())
+      : { stopPlan: [], durationMinutes: 0, distanceKm: 0 };
+    const stopsWithEta = (stops || []).map((stop) => {
+      const matched = routeMetrics.stopPlan.find((planStop) =>
+        (planStop.stop_name && stop.stop_name && String(planStop.stop_name).trim().toLowerCase() === String(stop.stop_name).trim().toLowerCase())
+        || (planStop.stop_sequence && stop.stop_sequence && Number(planStop.stop_sequence) === Number(stop.stop_sequence))
+      );
+      return matched ? { ...stop, eta_offset_minutes: matched.eta_offset_minutes } : stop;
+    });
 
     res.json({
       success: true,
       data: {
         cab,
-        route: route ? { ...route, stops } : null,
+        route: route ? { ...route, stops: stopsWithEta, route_distance_km: routeMetrics.distanceKm, route_duration_minutes: routeMetrics.durationMinutes } : null,
         assignments,
         passengers: assignments,
-        locationEnabled: !!(cab.current_latitude && cab.current_longitude)
+        locationEnabled: !!(cab.current_latitude && cab.current_longitude),
+        optimization: {
+          stopPlan: routeMetrics.stopPlan,
+          routeDistanceKm: routeMetrics.distanceKm,
+          routeDurationMinutes: routeMetrics.durationMinutes
+        }
       }
     });
   } catch (error) {

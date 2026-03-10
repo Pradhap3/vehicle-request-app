@@ -230,7 +230,11 @@ class SmartAllocationService {
         return { success: false, message: 'No cabs available', allocations: [] };
       }
       
-      const optimizedAssignments = RouteOptimizationService.planAssignments(pendingRequests, availableCabs);
+      const optimizedAssignments = RouteOptimizationService.planAssignments(
+        pendingRequests,
+        availableCabs,
+        { baseTime: new Date() }
+      );
       const allocations = [];
 
       for (const assignment of optimizedAssignments) {
@@ -259,7 +263,9 @@ class SmartAllocationService {
             cabId: assignment.cab.id,
             plannedSequence: assignment.cluster.requests.findIndex((row) => row.id === request.id) + 1,
             clusterSize: assignment.cluster.passengerCount,
-            routeDistanceKm: Number(assignment.cluster.routeDistanceKm.toFixed(2))
+            routeDistanceKm: Number(assignment.cluster.routeMetrics.distanceKm.toFixed(2)),
+            routeDurationMinutes: assignment.cluster.routeMetrics.durationMinutes,
+            utilizationPct: assignment.utilizationPct
           });
         }
       }
@@ -269,7 +275,18 @@ class SmartAllocationService {
       return {
         success: true,
         message: `Allocated ${allocations.length} requests to ${optimizedAssignments.length} cab(s)`,
-        allocations
+        allocations,
+        routePlans: optimizedAssignments.map((assignment) => ({
+          cabId: assignment.cab.id,
+          cabNumber: assignment.cab.cab_number,
+          driverId: assignment.cab.driver_id,
+          passengerCount: assignment.cluster.passengerCount,
+          utilizationPct: assignment.utilizationPct,
+          remainingSeats: assignment.remainingSeats,
+          stopPlan: assignment.cluster.routeMetrics.stopPlan,
+          routeDistanceKm: assignment.cluster.routeMetrics.distanceKm,
+          routeDurationMinutes: assignment.cluster.routeMetrics.durationMinutes
+        }))
       };
     } catch (error) {
       logger.error('Error allocating cabs:', error);
@@ -292,21 +309,24 @@ class SmartAllocationService {
         return { error: 'Route not found' };
       }
       
-      // Mock traffic data (would integrate with Google Maps API in production)
-      const conditions = ['clear', 'moderate', 'heavy'];
-      const randomCondition = conditions[Math.floor(Math.random() * 3)];
-      const delayMinutes = randomCondition === 'clear' ? 0 : 
-                          randomCondition === 'moderate' ? 10 : 25;
+      const hour = new Date().getHours();
+      const baseDistance = Number(route.distance_km || 0);
+      const estimatedTime = Number(route.estimated_time_minutes || 30);
+      const rushFactor = (hour >= 6 && hour < 10) || (hour >= 16 && hour < 21) ? 1.28 : hour >= 10 && hour < 16 ? 1.12 : 1.0;
+      const routeComplexity = baseDistance > 25 ? 1.12 : baseDistance > 12 ? 1.06 : 1.0;
+      const adjustedTime = Math.max(estimatedTime, Math.round(estimatedTime * rushFactor * routeComplexity));
+      const delayMinutes = Math.max(0, adjustedTime - estimatedTime);
+      const trafficCondition = delayMinutes >= 20 ? 'heavy' : delayMinutes >= 8 ? 'moderate' : 'clear';
       
       return {
         routeId,
         routeName: route.name,
         startPoint: route.start_point,
         endPoint: route.end_point,
-        estimatedTime: route.estimated_time_minutes,
-        trafficCondition: randomCondition,
+        estimatedTime,
+        trafficCondition,
         delayMinutes,
-        adjustedTime: route.estimated_time_minutes + delayMinutes,
+        adjustedTime,
         checkedAt: new Date().toISOString()
       };
     } catch (error) {

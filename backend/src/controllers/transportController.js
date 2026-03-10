@@ -6,6 +6,7 @@ const CabRequest = require('../models/CabRequest');
 const Cab = require('../models/Cab');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const RouteOptimizationService = require('../services/RouteOptimizationService');
 const logger = require('../utils/logger');
 
 const OFFICE_FALLBACK = {
@@ -482,13 +483,34 @@ exports.getMyTracking = async (req, res) => {
         ).toFixed(2))
       : null;
 
+    const trackingMetrics = RouteOptimizationService.buildTrackingMetrics({
+      cab,
+      routePath: sanitizedRoutePath,
+      currentPoint: cab ? {
+        latitude: cab.current_latitude,
+        longitude: cab.current_longitude
+      } : null,
+      tripDirection
+    });
+    const routePlan = RouteOptimizationService.buildRouteMetrics(
+      Array.isArray(requests) ? requests.filter((row) => row.route_id === routeId) : [],
+      trip?.pickup_time || trip?.requested_time || new Date()
+    );
+    const stopsWithEta = (stops || []).map((stop) => {
+      const match = routePlan.stopPlan.find((planStop) =>
+        (planStop.stop_name && stop.stop_name && String(planStop.stop_name).trim().toLowerCase() === String(stop.stop_name).trim().toLowerCase())
+        || (planStop.stop_sequence && stop.stop_sequence && Number(planStop.stop_sequence) === Number(stop.stop_sequence))
+      );
+      return match ? { ...stop, eta_offset_minutes: match.eta_offset_minutes } : stop;
+    });
+
     res.json({
       success: true,
       data: {
         trip,
         cab,
         profile,
-        route: route ? { ...route, stops } : null,
+        route: route ? { ...route, stops: stopsWithEta, route_distance_km: routePlan.distanceKm, route_duration_minutes: routePlan.durationMinutes } : null,
         routePath: sanitizedRoutePath,
         history,
         officePoint,
@@ -501,6 +523,23 @@ exports.getMyTracking = async (req, res) => {
           cabAtOffice,
           visitedBoardingPoint
         },
+        eta: {
+          toNextStopMinutes: trackingMetrics.nextStop ? RouteOptimizationService.estimateTravelMinutes(
+            {
+              latitude: cab?.current_latitude,
+              longitude: cab?.current_longitude
+            },
+            {
+              latitude: trackingMetrics.nextStop.latitude,
+              longitude: trackingMetrics.nextStop.longitude
+            },
+            new Date()
+          ) : null,
+          routeCompletionPct: trackingMetrics.completionPct,
+          finalEtaMinutes: trackingMetrics.etaMinutes
+        },
+        nextStop: trackingMetrics.nextStop,
+        remainingPickupPoints: trackingMetrics.remainingStops,
         distances: {
           toBoardingKm: distanceToBoardingKm,
           toOfficeKm: distanceToOfficeKm

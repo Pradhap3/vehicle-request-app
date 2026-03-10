@@ -69,7 +69,7 @@ export const userAPI = {
   create: (data) => api.post('/api/users', data),
   update: (id, data) => api.put(`/api/users/${id}`, data),
   delete: (id) => api.delete(`/api/users/${id}`),
-  hardDelete: (id) => api.delete(`/api/users/${id}/hard`),
+  hardDelete: (id) => api.delete(`/api/users/${id}/permanent`),
   getDrivers: () => api.get('/api/users/drivers'),
   getEmployees: () => api.get('/api/users/employees')
 };

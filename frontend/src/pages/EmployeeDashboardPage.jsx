@@ -451,7 +451,7 @@ export default function EmployeeDashboardPage() {
                       </div>
                       <div className="text-sm text-gray-600 flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
-                        {request.pickup_location} -> {request.drop_location}
+                        {request.pickup_location} {'->'} {request.drop_location}
                       </div>
                       <div className="text-xs text-gray-500">
                         {t('requests_type')}: {request.request_type || 'ADHOC'}

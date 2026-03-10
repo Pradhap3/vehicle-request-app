@@ -1,777 +1,552 @@
-// src/models/CabRequest.js
-// Supports multiple cab_requests schema variants across environments.
-const { sql, getPool } = require('../config/database');
+const { sql, getPool, withTransaction } = require('../config/database');
+const { istToUTC, utcToIST } = require('../utils/timezone');
+const { DatabaseError, NotFoundError, ConflictError } = require('../utils/errors');
 const logger = require('../utils/logger');
-const { v4: uuidv4 } = require('uuid');
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const bindFlexibleId = (request, paramName, id) => {
-  if (id === null || id === undefined) {
-    request.input(paramName, sql.NVarChar(255), null);
-    return;
-  }
-  if (typeof id === 'number' && Number.isInteger(id)) {
-    request.input(paramName, sql.Int, id);
-    return;
-  }
-  const normalized = String(id).trim();
-  if (/^\d+$/.test(normalized)) {
-    request.input(paramName, sql.Int, parseInt(normalized, 10));
-    return;
-  }
-  if (UUID_REGEX.test(normalized)) {
-    request.input(paramName, sql.UniqueIdentifier, normalized);
-    return;
-  }
-  request.input(paramName, sql.NVarChar(255), normalized);
-};
 
 class CabRequest {
-  static schemaCache = null;
-  static recurringTypes = ['RECURRING', 'RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
-
-  static parseDateOrNull(value) {
-    if (!value) return null;
-    if (value instanceof Date) {
-      return Number.isNaN(value.getTime()) ? null : value;
-    }
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  static normalizeInt(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? null : parsed;
   }
 
-  static normalizeRecord(record) {
-    if (!record) return record;
-
-    const normalized = { ...record };
-
-    if (normalized.boarding_area == null) {
-      normalized.boarding_area = normalized.departure_location ?? normalized.pickup_location ?? null;
-    }
-    if (normalized.dropping_area == null) {
-      normalized.dropping_area =
-        normalized.destination_location ?? normalized.drop_location ?? normalized.dropoff_location ?? null;
-    }
-    if (normalized.pickup_location == null) {
-      normalized.pickup_location = normalized.departure_location ?? normalized.boarding_area ?? null;
-    }
-    if (normalized.drop_location == null) {
-      normalized.drop_location =
-        normalized.destination_location ?? normalized.dropping_area ?? normalized.dropoff_location ?? null;
-    }
-    if (normalized.departure_location == null) {
-      normalized.departure_location = normalized.pickup_location ?? normalized.boarding_area ?? null;
-    }
-    if (normalized.destination_location == null) {
-      normalized.destination_location = normalized.drop_location ?? normalized.dropping_area ?? null;
-    }
-    if (normalized.requested_time == null) {
-      normalized.requested_time = normalized.pickup_time ?? null;
-    }
-    if (normalized.pickup_time == null) {
-      normalized.pickup_time = normalized.requested_time ?? null;
-    }
-
-    return normalized;
-  }
-
-  static async getCabRequestSchema() {
-    if (this.schemaCache) {
-      return this.schemaCache;
-    }
-
-    const pool = getPool();
-    const result = await pool.request().query(`
-      SELECT
-        c.name AS column_name,
-        CASE WHEN ic.column_id IS NULL THEN 0 ELSE 1 END AS is_identity
-      FROM sys.columns c
-      LEFT JOIN sys.identity_columns ic
-        ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-      WHERE c.object_id = OBJECT_ID('cab_requests')
-    `);
-
-    const columns = new Set(result.recordset.map((row) => row.column_name.toLowerCase()));
-    const hasColumn = (name) => columns.has(name);
-    const pickColumn = (names) => names.find((name) => hasColumn(name)) || null;
-    const idMeta = result.recordset.find((row) => row.column_name.toLowerCase() === 'id');
-
-    this.schemaCache = {
-      hasColumn,
-      idIsIdentity: Boolean(idMeta && idMeta.is_identity === 1),
-      pickupColumn: pickColumn(['departure_location', 'boarding_area', 'pickup_location']),
-      dropColumn: pickColumn(['destination_location', 'dropping_area', 'drop_location', 'dropoff_location']),
-      requestTimeColumn: pickColumn(['requested_time', 'pickup_time', 'created_at']),
-      assignmentColumn: pickColumn(['assigned_cab_id', 'cab_id']),
-      plannedAssignmentColumn: pickColumn(['assigned_at'])
+  static mapRecord(record) {
+    return {
+      ...this._formatResponse(record),
+      employee_name: record.employee_name,
+      route_name: record.route_name,
+      cab_number: record.cab_number,
+      driver_id: record.driver_id
     };
-
-    return this.schemaCache;
   }
 
-  static async findAll(filters = {}) {
+  static async create(data) {
+    const pool = getPool();
+
     try {
-      const pool = getPool();
-      const request = pool.request();
-      
-      let whereConditions = ['1=1'];
-      
-      if (filters.status) {
-        request.input('status', sql.NVarChar(50), filters.status);
-        whereConditions.push('cr.status = @status');
-      }
-      if (filters.employee_id) {
-        bindFlexibleId(request, 'employee_id', filters.employee_id);
-        whereConditions.push('cr.employee_id = @employee_id');
-      }
-      if (filters.route_id) {
-        bindFlexibleId(request, 'route_id', filters.route_id);
-        whereConditions.push('cr.route_id = @route_id');
-      }
-      
-      const result = await request.query(`
-        SELECT cr.*, 
-               e.name as employee_name, e.email as employee_email, e.phone as employee_phone, e.department,
-               r.name as route_name, r.start_point, r.end_point
-        FROM cab_requests cr
-        LEFT JOIN users e ON cr.employee_id = e.id
-        LEFT JOIN routes r ON cr.route_id = r.id
-        WHERE ${whereConditions.join(' AND ')}
-        ORDER BY cr.created_at DESC
-      `);
-      
-      return result.recordset.map((row) => this.normalizeRecord(row));
+      const pickupLocation = data.pickup_location || data.departure_location || data.boarding_area || null;
+      const dropLocation = data.drop_location || data.destination_location || data.dropping_area || null;
+      const pickupTime = data.pickup_time || data.requested_time || data.travel_time || new Date();
+
+      const result = await pool.request()
+        .input('employeeId', sql.Int, this.normalizeInt(data.employee_id))
+        .input('routeId', sql.Int, this.normalizeInt(data.route_id))
+        .input('pickupLocation', sql.NVarChar(500), pickupLocation)
+        .input('dropLocation', sql.NVarChar(500), dropLocation)
+        .input('pickupLatitude', sql.Float, data.pickup_latitude || null)
+        .input('pickupLongitude', sql.Float, data.pickup_longitude || null)
+        .input('dropLatitude', sql.Float, data.drop_latitude || null)
+        .input('dropLongitude', sql.Float, data.drop_longitude || null)
+        .input('pickupTime', sql.DateTime, istToUTC(pickupTime))
+        .input('passengers', sql.Int, this.normalizeInt(data.passengers || data.number_of_people) || 1)
+        .input('purpose', sql.NVarChar(500), data.purpose || null)
+        .input('requestType', sql.NVarChar(50), data.request_type || 'ADHOC')
+        .input('priority', sql.NVarChar(20), data.priority || 'NORMAL')
+        .input('status', sql.NVarChar(50), data.status || 'PENDING')
+        .input('assignedAt', sql.DateTime, data.assigned_at ? new Date(data.assigned_at) : null)
+        .input('boardingArea', sql.NVarChar(500), data.boarding_area || pickupLocation)
+        .input('droppingArea', sql.NVarChar(500), data.dropping_area || dropLocation)
+        .input('createdAt', sql.DateTime, new Date())
+        .query(`
+          INSERT INTO cab_requests (
+            employee_id, route_id, pickup_location, drop_location,
+            pickup_latitude, pickup_longitude, drop_latitude, drop_longitude,
+            pickup_time, passengers, purpose, request_type, priority, status,
+            assigned_at, boarding_area, dropping_area, created_at, updated_at, is_active
+          )
+          VALUES (
+            @employeeId, @routeId, @pickupLocation, @dropLocation,
+            @pickupLatitude, @pickupLongitude, @dropLatitude, @dropLongitude,
+            @pickupTime, @passengers, @purpose, @requestType, @priority, @status,
+            @assignedAt, @boardingArea, @droppingArea, @createdAt, @createdAt, 1
+          );
+
+          SELECT CAST(SCOPE_IDENTITY() as int) as id;
+        `);
+
+      const id = result.recordset[0].id;
+      logger.info(`Request created: ${id}`, { employeeId: data.employee_id });
+      return this.findById(id);
     } catch (error) {
-      logger.error('Error fetching cab requests:', error);
-      return [];
+      logger.error('Failed to create request:', error);
+      throw new DatabaseError('Failed to create request', error, 'CREATE');
     }
   }
 
   static async findById(id) {
+    const pool = getPool();
+
     try {
-      const pool = getPool();
-      const request = pool.request();
-      bindFlexibleId(request, 'id', id);
-      const result = await request
-        .query(`
-          SELECT cr.*, 
-                 e.name as employee_name, e.email as employee_email, e.phone as employee_phone, e.department,
-                 r.name as route_name, r.start_point, r.end_point
-          FROM cab_requests cr
-          LEFT JOIN users e ON cr.employee_id = e.id
-          LEFT JOIN routes r ON cr.route_id = r.id
-          WHERE cr.id = @id
-        `);
-      return this.normalizeRecord(result.recordset[0]);
-    } catch (error) {
-      logger.error('Error finding cab request by ID:', error);
-      throw error;
-    }
-  }
-
-  // CREATE - only uses columns that exist in actual DB
-  static async create(requestData) {
-    try {
-      const pool = getPool();
-      const schema = await this.getCabRequestSchema();
-      const newId = uuidv4().toUpperCase();
-      const request = pool.request();
-
-      const insertColumns = [];
-      const insertValues = [];
-
-      if (schema.hasColumn('id') && !schema.idIsIdentity) {
-        request.input('id', sql.NVarChar(255), newId);
-        insertColumns.push('id');
-        insertValues.push('@id');
-      }
-
-      if (schema.hasColumn('employee_id')) {
-        bindFlexibleId(request, 'employee_id', requestData.employee_id);
-        insertColumns.push('employee_id');
-        insertValues.push('@employee_id');
-      }
-
-      if (schema.hasColumn('route_id')) {
-        bindFlexibleId(request, 'route_id', requestData.route_id || null);
-        insertColumns.push('route_id');
-        insertValues.push('@route_id');
-      }
-
-      if (schema.pickupColumn) {
-        const pickupValue =
-          requestData.departure_location ||
-          requestData.boarding_area ||
-          requestData.pickup_location ||
-          'Unknown';
-        request.input(
-          'pickup_value',
-          sql.NVarChar(500),
-          pickupValue
-        );
-        insertColumns.push(schema.pickupColumn);
-        insertValues.push('@pickup_value');
-      }
-
-      if (schema.dropColumn) {
-        const dropValue =
-          requestData.destination_location ||
-          requestData.dropping_area ||
-          requestData.drop_location ||
-          requestData.dropoff_location ||
-          'Unknown';
-        request.input(
-          'drop_value',
-          sql.NVarChar(500),
-          dropValue
-        );
-        insertColumns.push(schema.dropColumn);
-        insertValues.push('@drop_value');
-      }
-
-      if (schema.hasColumn('requested_time')) {
-        const requestedTime =
-          this.parseDateOrNull(requestData.requested_time) ||
-          this.parseDateOrNull(requestData.pickup_time) ||
-          new Date();
-        request.input('requested_time', sql.DateTime, requestedTime);
-        insertColumns.push('requested_time');
-        insertValues.push('@requested_time');
-      }
-
-      if (schema.hasColumn('pickup_time')) {
-        request.input(
-          'pickup_time',
-          sql.DateTime,
-          this.parseDateOrNull(requestData.pickup_time) || this.parseDateOrNull(requestData.requested_time) || new Date()
-        );
-        insertColumns.push('pickup_time');
-        insertValues.push('@pickup_time');
-      }
-
-      if (schema.hasColumn('travel_time')) {
-        const travelTime =
-          this.parseDateOrNull(requestData.travel_time) ||
-          this.parseDateOrNull(requestData.requested_time) ||
-          this.parseDateOrNull(requestData.pickup_time) ||
-          new Date();
-        request.input('travel_time', sql.DateTime, travelTime);
-        insertColumns.push('travel_time');
-        insertValues.push('@travel_time');
-      }
-
-      if (schema.plannedAssignmentColumn && requestData.assigned_at !== undefined) {
-        request.input('assigned_at', sql.DateTime, this.parseDateOrNull(requestData.assigned_at));
-        insertColumns.push(schema.plannedAssignmentColumn);
-        insertValues.push('@assigned_at');
-      }
-
-      if (schema.hasColumn('status')) {
-        request.input('status', sql.NVarChar(50), requestData.status || 'PENDING');
-        insertColumns.push('status');
-        insertValues.push('@status');
-      }
-
-      if (schema.hasColumn('priority') && requestData.priority !== undefined) {
-        request.input('priority', sql.NVarChar(40), requestData.priority);
-        insertColumns.push('priority');
-        insertValues.push('@priority');
-      }
-      if (schema.hasColumn('request_type') && requestData.request_type !== undefined) {
-        request.input('request_type', sql.NVarChar(40), requestData.request_type);
-        insertColumns.push('request_type');
-        insertValues.push('@request_type');
-      }
-
-      if (schema.hasColumn('number_of_people') && requestData.number_of_people !== undefined) {
-        request.input('number_of_people', sql.Int, requestData.number_of_people);
-        insertColumns.push('number_of_people');
-        insertValues.push('@number_of_people');
-      }
-
-      if (schema.hasColumn('created_at')) {
-        insertColumns.push('created_at');
-        insertValues.push('GETDATE()');
-      }
-
-      const result = await request.query(`
-          INSERT INTO cab_requests (${insertColumns.join(', ')})
-          OUTPUT INSERTED.*
-          VALUES (${insertValues.join(', ')})
-        `);
-      
-      logger.info(`Cab request created: ${newId} for employee ${requestData.employee_id}`);
-      return this.normalizeRecord(result.recordset[0]);
-    } catch (error) {
-      logger.error('Error creating cab request:', error);
-      throw error;
-    }
-  }
-
-  static async update(id, requestData) {
-    try {
-      const pool = getPool();
-      const schema = await this.getCabRequestSchema();
-      const request = pool.request();
-      bindFlexibleId(request, 'id', id);
-      
-      const updates = [];
-      
-      if (schema.hasColumn('route_id') && requestData.route_id !== undefined) {
-        bindFlexibleId(request, 'route_id', requestData.route_id);
-        updates.push('route_id = @route_id');
-      }
-      if (schema.hasColumn('status') && requestData.status) {
-        request.input('status', sql.NVarChar(50), requestData.status);
-        updates.push('status = @status');
-      }
-      if (
-        schema.pickupColumn &&
-        (requestData.departure_location !== undefined ||
-          requestData.boarding_area !== undefined ||
-          requestData.pickup_location !== undefined)
-      ) {
-        request.input(
-          'pickup_value',
-          sql.NVarChar(500),
-          requestData.departure_location ?? requestData.boarding_area ?? requestData.pickup_location ?? null
-        );
-        updates.push(`${schema.pickupColumn} = @pickup_value`);
-      }
-      if (
-        schema.dropColumn &&
-        (requestData.destination_location !== undefined ||
-          requestData.dropping_area !== undefined ||
-          requestData.drop_location !== undefined ||
-          requestData.dropoff_location !== undefined)
-      ) {
-        request.input(
-          'drop_value',
-          sql.NVarChar(500),
-          requestData.destination_location ??
-            requestData.dropping_area ??
-            requestData.drop_location ??
-            requestData.dropoff_location ??
-            null
-        );
-        updates.push(`${schema.dropColumn} = @drop_value`);
-      }
-      if (schema.hasColumn('requested_time') && requestData.requested_time !== undefined) {
-        request.input('requested_time', sql.DateTime, this.parseDateOrNull(requestData.requested_time));
-        updates.push('requested_time = @requested_time');
-      }
-      if (schema.hasColumn('travel_time') && requestData.travel_time !== undefined) {
-        request.input('travel_time', sql.DateTime, this.parseDateOrNull(requestData.travel_time));
-        updates.push('travel_time = @travel_time');
-      }
-      if (schema.hasColumn('priority') && requestData.priority !== undefined) {
-        request.input('priority', sql.NVarChar(40), requestData.priority);
-        updates.push('priority = @priority');
-      }
-      if (schema.hasColumn('request_type') && requestData.request_type !== undefined) {
-        request.input('request_type', sql.NVarChar(40), requestData.request_type);
-        updates.push('request_type = @request_type');
-      }
-      if (schema.assignmentColumn && (requestData.cab_id !== undefined || requestData.assigned_cab_id !== undefined)) {
-        bindFlexibleId(request, 'assigned_cab_id', requestData.assigned_cab_id ?? requestData.cab_id ?? null);
-        updates.push(`${schema.assignmentColumn} = @assigned_cab_id`);
-      }
-      if (schema.plannedAssignmentColumn && requestData.assigned_at !== undefined) {
-        request.input('assigned_at', sql.DateTime, this.parseDateOrNull(requestData.assigned_at));
-        updates.push(`${schema.plannedAssignmentColumn} = @assigned_at`);
-      }
-      if (schema.hasColumn('number_of_people') && requestData.number_of_people !== undefined) {
-        request.input('number_of_people', sql.Int, requestData.number_of_people);
-        updates.push('number_of_people = @number_of_people');
-      }
-      if (schema.hasColumn('updated_at')) {
-        updates.push('updated_at = GETDATE()');
-      }
-      
-      if (updates.length === 0) {
-        return await this.findById(id);
-      }
-      
-      const result = await request.query(`
-        UPDATE cab_requests 
-        SET ${updates.join(', ')}
-        OUTPUT INSERTED.*
-        WHERE id = @id
-      `);
-      
-      return this.normalizeRecord(result.recordset[0]);
-    } catch (error) {
-      logger.error('Error updating cab request:', error);
-      throw error;
-    }
-  }
-
-  static async delete(id) {
-    try {
-      const pool = getPool();
       const result = await pool.request()
-        .input('id', /^\d+$/.test(String(id)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(id)) ? parseInt(String(id), 10) : id)
-        .query(`DELETE FROM cab_requests OUTPUT DELETED.id WHERE id = @id`);
-      
+        .input('id', sql.Int, this.normalizeInt(id))
+        .query(`
+          SELECT
+            cr.*,
+            u.name AS employee_name,
+            r.name AS route_name,
+            c.cab_number,
+            c.driver_id
+          FROM cab_requests cr
+          LEFT JOIN users u ON u.id = cr.employee_id
+          LEFT JOIN routes r ON r.id = cr.route_id
+          LEFT JOIN cabs c ON c.id = cr.cab_id
+          WHERE cr.id = @id AND cr.is_active = 1
+        `);
+
       if (result.recordset.length === 0) {
-        throw new Error('Request not found');
+        return null;
       }
-      
-      return { success: true, id };
+
+      return this.mapRecord(result.recordset[0]);
     } catch (error) {
-      logger.error('Error deleting cab request:', error);
-      throw error;
+      logger.error('Failed to fetch request:', error);
+      throw new DatabaseError('Failed to fetch request', error, 'READ');
     }
   }
 
-  static async assignCab(requestId, cabId) {
+  static async findAll(filters = {}, limit = 20, offset = 0) {
+    const pool = getPool();
+
     try {
-      const pool = getPool();
-      const schema = await this.getCabRequestSchema();
+      let whereClause = 'WHERE cr.is_active = 1';
       const request = pool.request();
-      bindFlexibleId(request, 'id', requestId);
-      request.input('status', sql.NVarChar(50), 'APPROVED');
-      if (schema.plannedAssignmentColumn) {
-        request.input('assigned_at', sql.DateTime, new Date());
+
+      if (filters.employeeId) {
+        whereClause += ' AND cr.employee_id = @employeeId';
+        request.input('employeeId', sql.Int, this.normalizeInt(filters.employeeId));
       }
-      if (schema.assignmentColumn) {
-        bindFlexibleId(request, 'cab_id', cabId);
+
+      if (filters.status) {
+        whereClause += ' AND cr.status = @status';
+        request.input('status', sql.NVarChar(50), filters.status);
       }
-      const result = await request.query(`
-          UPDATE cab_requests
-          SET status = @status
-              ${schema.plannedAssignmentColumn ? `, ${schema.plannedAssignmentColumn} = @assigned_at` : ''}
-              ${schema.assignmentColumn ? `, ${schema.assignmentColumn} = @cab_id` : ''}
-          OUTPUT INSERTED.*
-          WHERE id = @id
-        `);
-      
-      logger.info(`Request ${requestId} approved`);
-      return result.recordset[0];
-    } catch (error) {
-      logger.error('Error assigning cab:', error);
-      throw error;
-    }
-  }
 
-  static async cancel(requestId, reason) {
-    try {
-      const pool = getPool();
-      const request = pool.request();
-      bindFlexibleId(request, 'id', requestId);
-      const result = await request
-        .query(`
-          UPDATE cab_requests 
-          SET status = 'CANCELLED'
-          OUTPUT INSERTED.*
-          WHERE id = @id AND status IN ('PENDING', 'APPROVED')
-        `);
-      
-      if (result.recordset.length === 0) {
-        throw new Error('Cannot cancel this request');
+      if (filters.cabId) {
+        whereClause += ' AND cr.cab_id = @cabId';
+        request.input('cabId', sql.Int, this.normalizeInt(filters.cabId));
       }
-      
-      return result.recordset[0];
-    } catch (error) {
-      logger.error('Error cancelling request:', error);
-      throw error;
-    }
-  }
 
-  static async getTodayStats() {
-    try {
-      const pool = getPool();
-      const result = await pool.request()
-        .query(`
-          SELECT 
-            COUNT(*) as total,
-            SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) as pending,
-            SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) as approved,
-            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
-            SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled
-          FROM cab_requests
-          WHERE CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)
-        `);
-      return result.recordset[0];
-    } catch (error) {
-      logger.error('Error getting today stats:', error);
-      return { total: 0, pending: 0, approved: 0, completed: 0, cancelled: 0 };
-    }
-  }
-
-  static async getPendingRequestsForRoute(routeId) {
-    try {
-      const pool = getPool();
-      const result = await pool.request()
-        .input('route_id', /^\d+$/.test(String(routeId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(routeId)) ? parseInt(String(routeId), 10) : routeId)
-        .query(`
-          SELECT cr.*, e.name as employee_name, e.phone as employee_phone
-          FROM cab_requests cr
-          INNER JOIN users e ON cr.employee_id = e.id
-          WHERE cr.route_id = @route_id 
-            AND cr.status = 'PENDING'
-          ORDER BY cr.created_at
-        `);
-      return result.recordset.map((row) => this.normalizeRecord(row));
-    } catch (error) {
-      logger.error('Error getting pending requests for route:', error);
-      return [];
-    }
-  }
-
-  static async getByEmployeeId(employeeId) {
-    try {
-      const pool = getPool();
-      const result = await pool.request()
-        .input('employee_id', /^\d+$/.test(String(employeeId)) ? sql.Int : sql.NVarChar(255), /^\d+$/.test(String(employeeId)) ? parseInt(String(employeeId), 10) : employeeId)
-        .query(`
-          SELECT cr.*, 
-                 r.name as route_name, r.start_point, r.end_point
-          FROM cab_requests cr
-          LEFT JOIN routes r ON cr.route_id = r.id
-          WHERE cr.employee_id = @employee_id
-          ORDER BY cr.created_at DESC
-        `);
-      return result.recordset.map((row) => this.normalizeRecord(row));
-    } catch (error) {
-      logger.error('Error getting requests by employee:', error);
-      return [];
-    }
-  }
-
-  static async getAssignedRequestsForCab(cabId, date = null) {
-    try {
-      const pool = getPool();
-      const schema = await this.getCabRequestSchema();
-      if (!schema.assignmentColumn) return [];
-
-      const request = pool.request();
-      bindFlexibleId(request, 'cab_id', cabId);
-      let dateFilter = '';
-      const timeCol = schema.requestTimeColumn || 'created_at';
-      if (date) {
-        request.input('trip_date', sql.Date, date);
-        dateFilter = `AND CAST(cr.${timeCol} AS DATE) = @trip_date`;
+      if (filters.fromDate && filters.toDate) {
+        whereClause += ' AND cr.pickup_time BETWEEN @fromDate AND @toDate';
+        request.input('fromDate', sql.DateTime, istToUTC(filters.fromDate));
+        request.input('toDate', sql.DateTime, istToUTC(filters.toDate));
       }
+
+      if (filters.date) {
+        whereClause += ' AND CAST(cr.pickup_time AS DATE) = @date';
+        request.input('date', sql.Date, String(filters.date).slice(0, 10));
+      }
+
+      request
+        .input('limit', sql.Int, Number.parseInt(limit, 10))
+        .input('offset', sql.Int, Number.parseInt(offset, 10));
 
       const result = await request.query(`
         SELECT
           cr.*,
-          e.name as employee_name,
-          e.phone as employee_phone,
-          ep.stop_sequence AS profile_stop_sequence
+          u.name AS employee_name,
+          r.name AS route_name,
+          c.cab_number,
+          c.driver_id
         FROM cab_requests cr
-        LEFT JOIN users e ON cr.employee_id = e.id
-        LEFT JOIN employee_transport_profiles ep
-          ON ep.employee_id = cr.employee_id
-         AND ep.is_active = 1
-        WHERE cr.${schema.assignmentColumn} = @cab_id
-          AND cr.status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS')
-          ${dateFilter}
-        ORDER BY
-          CASE
-            WHEN ep.stop_sequence IS NULL THEN 1
-            WHEN LOWER(COALESCE(cr.request_type, '')) = 'recurring_outbound' THEN -ep.stop_sequence
-            ELSE ep.stop_sequence
-          END ASC,
-          cr.${timeCol} ASC
+        LEFT JOIN users u ON u.id = cr.employee_id
+        LEFT JOIN routes r ON r.id = cr.route_id
+        LEFT JOIN cabs c ON c.id = cr.cab_id
+        ${whereClause}
+        ORDER BY cr.pickup_time DESC, cr.created_at DESC
+        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
       `);
 
-      return result.recordset.map((row) => this.normalizeRecord(row));
+      return result.recordset.map((row) => this.mapRecord(row));
     } catch (error) {
-      logger.error('Error getting assigned requests for cab:', error);
-      return [];
+      logger.error('Failed to fetch requests:', error);
+      throw new DatabaseError('Failed to fetch requests', error, 'READ');
     }
   }
 
-  static async getUpcomingRoutesForAutoAssign(windowMinutes = 30) {
+  static async findForEmployeeOnDate(employeeId, date) {
+    const pool = getPool();
+
     try {
-      const pool = getPool();
-      const schema = await this.getCabRequestSchema();
-      const timeCol = schema.requestTimeColumn || 'created_at';
       const result = await pool.request()
-        .input('window_minutes', sql.Int, windowMinutes)
+        .input('employeeId', sql.Int, this.normalizeInt(employeeId))
+        .input('date', sql.Date, String(date).slice(0, 10))
         .query(`
-          SELECT DISTINCT route_id
-          FROM cab_requests
-          WHERE route_id IS NOT NULL
-            AND status = 'PENDING'
-            AND ${timeCol} IS NOT NULL
-            AND ${timeCol} >= GETDATE()
-            AND ${timeCol} <= DATEADD(MINUTE, @window_minutes, GETDATE())
+          SELECT
+            cr.*,
+            u.name AS employee_name,
+            r.name AS route_name,
+            c.cab_number,
+            c.driver_id
+          FROM cab_requests cr
+          LEFT JOIN users u ON u.id = cr.employee_id
+          LEFT JOIN routes r ON r.id = cr.route_id
+          LEFT JOIN cabs c ON c.id = cr.cab_id
+          WHERE cr.employee_id = @employeeId
+            AND CAST(cr.pickup_time AS DATE) = @date
+            AND cr.is_active = 1
+          ORDER BY cr.pickup_time ASC
         `);
-      return result.recordset.map((row) => row.route_id);
+
+      return result.recordset.map((row) => this.mapRecord(row));
     } catch (error) {
-      logger.error('Error fetching upcoming routes for auto-assignment:', error);
-      return [];
+      throw new DatabaseError('Failed to fetch employee requests', error, 'READ');
     }
   }
 
-  static async cancelUpcomingForNoShow(employeeId, sourceRequestId, daysAhead = 1) {
+  static async getByEmployeeId(employeeId) {
+    return this.findAll({ employeeId }, 500, 0);
+  }
+
+  static async getAssignedRequestsForCab(cabId, date) {
+    const pool = getPool();
+
     try {
-      const pool = getPool();
-      const schema = await this.getCabRequestSchema();
-      const timeCol = schema.requestTimeColumn || 'created_at';
-      const request = pool.request();
+      const result = await pool.request()
+        .input('cabId', sql.Int, this.normalizeInt(cabId))
+        .input('date', sql.Date, String(date).slice(0, 10))
+        .query(`
+          SELECT
+            cr.*,
+            u.name AS employee_name,
+            r.name AS route_name,
+            c.cab_number,
+            c.driver_id
+          FROM cab_requests cr
+          LEFT JOIN users u ON u.id = cr.employee_id
+          LEFT JOIN routes r ON r.id = cr.route_id
+          LEFT JOIN cabs c ON c.id = cr.cab_id
+          WHERE cr.cab_id = @cabId
+            AND CAST(cr.pickup_time AS DATE) = @date
+            AND cr.is_active = 1
+            AND cr.status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')
+          ORDER BY cr.pickup_time ASC
+        `);
 
-      bindFlexibleId(request, 'employee_id', employeeId);
-      bindFlexibleId(request, 'source_id', sourceRequestId);
-      request.input('days_ahead', sql.Int, daysAhead);
-
-      const result = await request.query(`
-        UPDATE cab_requests
-        SET status = 'CANCELLED'
-            ${schema.hasColumn('updated_at') ? ', updated_at = GETDATE()' : ''}
-        OUTPUT INSERTED.id
-        WHERE employee_id = @employee_id
-          AND id <> @source_id
-          AND status IN ('PENDING', 'APPROVED')
-          AND ${timeCol} IS NOT NULL
-          AND ${timeCol} >= GETDATE()
-          AND ${timeCol} < DATEADD(DAY, @days_ahead + 1, CAST(GETDATE() AS DATE))
-      `);
-
-      return result.recordset.map((row) => row.id);
+      return result.recordset.map((row) => this.mapRecord(row));
     } catch (error) {
-      logger.error('Error cancelling upcoming requests after no-show:', error);
-      return [];
+      throw new DatabaseError('Failed to fetch assigned requests', error, 'READ');
     }
   }
 
-  static async hasActiveTripsForCab(cabId) {
-    try {
-      const schema = await this.getCabRequestSchema();
-      if (!schema.assignmentColumn) return false;
+  static async findRecurringTripsForEmployeeOnDate(employeeId, date, requestTypes = []) {
+    const pool = getPool();
 
-      const pool = getPool();
-      const request = pool.request();
-      bindFlexibleId(request, 'cab_id', cabId);
+    try {
+      const types = Array.isArray(requestTypes) && requestTypes.length > 0
+        ? requestTypes
+        : ['RECURRING', 'RECURRING_INBOUND', 'RECURRING_OUTBOUND'];
+      const request = pool.request()
+        .input('employeeId', sql.Int, this.normalizeInt(employeeId))
+        .input('date', sql.Date, String(date).slice(0, 10));
+
+      const placeholders = types.map((type, index) => {
+        request.input(`type${index}`, sql.NVarChar(50), type);
+        return `@type${index}`;
+      });
+
       const result = await request.query(`
-        SELECT COUNT(*) AS active_count
+        SELECT *
         FROM cab_requests
-        WHERE ${schema.assignmentColumn} = @cab_id
-          AND status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS')
+        WHERE employee_id = @employeeId
+          AND CAST(pickup_time AS DATE) = @date
+          AND is_active = 1
+          AND request_type IN (${placeholders.join(', ')})
+        ORDER BY created_at DESC
       `);
-      return (result.recordset[0]?.active_count || 0) > 0;
+
+      return result.recordset.map((row) => this.mapRecord(row));
     } catch (error) {
-      logger.error('Error checking active trips for cab:', error);
-      return false;
+      throw new DatabaseError('Failed to fetch recurring trips', error, 'READ');
     }
   }
 
-  static async findConflictingRequest(employeeId, requestedTime, excludeRequestId = null, windowMinutes = 180) {
+  static async findActiveTripForEmployeeOnDate(employeeId, date, requestTypes = []) {
+    const trips = await this.findRecurringTripsForEmployeeOnDate(employeeId, date, requestTypes);
+    return trips.find((trip) => ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(trip.status)) || null;
+  }
+
+  static async update(id, updates = {}) {
+    const existing = await this.findById(id);
+    if (!existing) {
+      throw new NotFoundError('Request', id);
+    }
+
+    const payload = {
+      route_id: updates.route_id ?? existing.route_id,
+      pickup_location: updates.pickup_location ?? updates.departure_location ?? updates.boarding_area ?? existing.pickup_location,
+      drop_location: updates.drop_location ?? updates.destination_location ?? updates.dropping_area ?? existing.drop_location,
+      pickup_time: updates.pickup_time ?? updates.requested_time ?? updates.travel_time ?? existing.pickup_time,
+      assigned_at: updates.assigned_at ?? existing.assigned_at,
+      boarding_area: updates.boarding_area ?? existing.boarding_area,
+      dropping_area: updates.dropping_area ?? existing.dropping_area,
+      purpose: updates.purpose ?? existing.purpose,
+      priority: updates.priority ?? existing.priority,
+      passengers: updates.passengers ?? updates.number_of_people ?? existing.passengers,
+      request_type: updates.request_type ?? existing.request_type,
+      status: updates.status ?? existing.status
+    };
+
     try {
-      const parsed = this.parseDateOrNull(requestedTime);
-      if (!parsed) return null;
+      await getPool().request()
+        .input('id', sql.Int, this.normalizeInt(id))
+        .input('routeId', sql.Int, this.normalizeInt(payload.route_id))
+        .input('pickupLocation', sql.NVarChar(500), payload.pickup_location)
+        .input('dropLocation', sql.NVarChar(500), payload.drop_location)
+        .input('pickupTime', sql.DateTime, istToUTC(payload.pickup_time))
+        .input('assignedAt', sql.DateTime, payload.assigned_at ? new Date(payload.assigned_at) : null)
+        .input('boardingArea', sql.NVarChar(500), payload.boarding_area || null)
+        .input('droppingArea', sql.NVarChar(500), payload.dropping_area || null)
+        .input('purpose', sql.NVarChar(500), payload.purpose || null)
+        .input('priority', sql.NVarChar(20), payload.priority || 'NORMAL')
+        .input('passengers', sql.Int, this.normalizeInt(payload.passengers) || 1)
+        .input('requestType', sql.NVarChar(50), payload.request_type || 'ADHOC')
+        .input('status', sql.NVarChar(50), payload.status || existing.status)
+        .query(`
+          UPDATE cab_requests
+          SET route_id = @routeId,
+              pickup_location = @pickupLocation,
+              drop_location = @dropLocation,
+              pickup_time = @pickupTime,
+              assigned_at = @assignedAt,
+              boarding_area = @boardingArea,
+              dropping_area = @droppingArea,
+              purpose = @purpose,
+              priority = @priority,
+              passengers = @passengers,
+              request_type = @requestType,
+              status = @status,
+              updated_at = GETDATE()
+          WHERE id = @id AND is_active = 1
+        `);
 
-      const schema = await this.getCabRequestSchema();
-      const timeCol = schema.requestTimeColumn || 'created_at';
-      const pool = getPool();
-      const request = pool.request();
-      bindFlexibleId(request, 'employee_id', employeeId);
-      request.input('requested_time', sql.DateTime, parsed);
-      request.input('window_minutes', sql.Int, windowMinutes);
+      return this.findById(id);
+    } catch (error) {
+      throw new DatabaseError('Failed to update request', error, 'UPDATE');
+    }
+  }
 
-      let excludeClause = '';
-      if (excludeRequestId !== null && excludeRequestId !== undefined) {
-        bindFlexibleId(request, 'exclude_id', excludeRequestId);
-        excludeClause = 'AND id <> @exclude_id';
+  static async updateStatus(id, status, updatedBy) {
+    try {
+      const result = await getPool().request()
+        .input('id', sql.Int, this.normalizeInt(id))
+        .input('status', sql.NVarChar(50), status)
+        .input('updatedAt', sql.DateTime, new Date())
+        .query(`
+          UPDATE cab_requests
+          SET status = @status, updated_at = @updatedAt
+          WHERE id = @id AND is_active = 1
+
+          SELECT @@ROWCOUNT as affected
+        `);
+
+      if (result.recordset[0].affected === 0) {
+        throw new NotFoundError('Request', id);
       }
 
-      const result = await request.query(`
-        SELECT TOP 1 *
-        FROM cab_requests
-        WHERE employee_id = @employee_id
-          ${excludeClause}
-          AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS')
-          AND ${timeCol} IS NOT NULL
-          AND ABS(DATEDIFF(MINUTE, ${timeCol}, @requested_time)) < @window_minutes
-        ORDER BY ABS(DATEDIFF(MINUTE, ${timeCol}, @requested_time))
-      `);
-
-      return result.recordset[0] || null;
+      logger.info(`Request ${id} status updated to ${status}`, { updatedBy });
+      return this.findById(id);
     } catch (error) {
-      logger.error('Error checking conflicting request:', error);
-      return null;
+      if (error instanceof NotFoundError) throw error;
+      throw new DatabaseError('Failed to update request', error, 'UPDATE');
     }
   }
 
-  static async findActiveTripForEmployeeOnDate(employeeId, targetDate, requestTypes = null) {
+  static async assignCab(id, cabId, assignedBy) {
     try {
-      const schema = await this.getCabRequestSchema();
-      const timeCol = schema.requestTimeColumn || 'created_at';
-      const pool = getPool();
-      const request = pool.request();
-      bindFlexibleId(request, 'employee_id', employeeId);
-      request.input('target_date', sql.Date, targetDate);
-      let requestTypeClause = '';
+      return await withTransaction(async (tx) => {
+        const requestLock = await tx.request()
+          .input('id', sql.Int, this.normalizeInt(id))
+          .query(`
+            SELECT TOP 1 id, status FROM cab_requests WITH (UPDLOCK)
+            WHERE id = @id AND is_active = 1
+          `);
 
-      if (schema.hasColumn('request_type')) {
-        const types = Array.isArray(requestTypes) && requestTypes.length > 0 ? requestTypes : null;
-        if (types) {
-          const placeholders = types.map((_, index) => `@request_type_${index}`);
-          types.forEach((type, index) => {
-            request.input(`request_type_${index}`, sql.NVarChar(40), type);
-          });
-          requestTypeClause = `AND request_type IN (${placeholders.join(', ')})`;
+        if (requestLock.recordset.length === 0) {
+          throw new NotFoundError('Request', id);
         }
-      }
 
-      const result = await request.query(`
-        SELECT *
-        FROM cab_requests
-        WHERE employee_id = @employee_id
-          ${requestTypeClause}
-          AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')
-          AND ${timeCol} IS NOT NULL
-          AND CAST(${timeCol} AS DATE) = @target_date
-        ORDER BY created_at DESC
-      `);
+        if (!['PENDING', 'APPROVED'].includes(requestLock.recordset[0].status)) {
+          throw new ConflictError('Request not in valid state for assignment');
+        }
 
-      return result.recordset[0] || null;
+        const cabLock = await tx.request()
+          .input('cabId', sql.Int, this.normalizeInt(cabId))
+          .query(`
+            SELECT TOP 1 id, status FROM cabs WITH (UPDLOCK)
+            WHERE id = @cabId AND is_active = 1
+          `);
+
+        if (cabLock.recordset.length === 0) {
+          throw new NotFoundError('Cab', cabId);
+        }
+
+        await tx.request()
+          .input('id', sql.Int, this.normalizeInt(id))
+          .input('cabId', sql.Int, this.normalizeInt(cabId))
+          .input('assignedAt', sql.DateTime, new Date())
+          .query(`
+            UPDATE cab_requests
+            SET cab_id = @cabId,
+                assigned_at = @assignedAt,
+                status = 'ASSIGNED',
+                updated_at = GETDATE()
+            WHERE id = @id
+          `);
+
+        logger.info(`Request ${id} assigned to cab ${cabId}`, { assignedBy });
+        return this.findById(id);
+      });
     } catch (error) {
-      logger.error('Error finding active trip for employee/date:', error);
-      return null;
+      if (error instanceof NotFoundError || error instanceof ConflictError) throw error;
+      throw new DatabaseError('Failed to assign cab', error, 'UPDATE');
     }
   }
 
-  static async findRecurringTripsForEmployeeOnDate(employeeId, targetDate, requestTypes = null) {
+  static async markBoarded(id, boardedAt, location, boardedBy) {
     try {
-      const schema = await this.getCabRequestSchema();
-      const timeCol = schema.requestTimeColumn || 'created_at';
-      const pool = getPool();
-      const request = pool.request();
-      bindFlexibleId(request, 'employee_id', employeeId);
-      request.input('target_date', sql.Date, targetDate);
+      const result = await getPool().request()
+        .input('id', sql.Int, this.normalizeInt(id))
+        .input('boardedAt', sql.DateTime, boardedAt || new Date())
+        .input('location', sql.NVarChar(500), location)
+        .input('status', sql.NVarChar(50), 'IN_PROGRESS')
+        .query(`
+          UPDATE cab_requests
+          SET actual_pickup_time = @boardedAt,
+              boarding_area = @location,
+              status = @status,
+              updated_at = GETDATE()
+          WHERE id = @id AND is_active = 1
 
-      let requestTypeClause = '';
-      if (schema.hasColumn('request_type')) {
-        const types = Array.isArray(requestTypes) && requestTypes.length > 0
-          ? requestTypes
-          : this.recurringTypes;
-        const placeholders = types.map((_, index) => `@request_type_${index}`);
-        types.forEach((type, index) => {
-          request.input(`request_type_${index}`, sql.NVarChar(40), type);
-        });
-        requestTypeClause = `AND request_type IN (${placeholders.join(', ')})`;
+          SELECT @@ROWCOUNT as affected
+        `);
+
+      if (result.recordset[0].affected === 0) {
+        throw new NotFoundError('Request', id);
       }
 
-      const result = await request.query(`
-        SELECT *
-        FROM cab_requests
-        WHERE employee_id = @employee_id
-          ${requestTypeClause}
-          AND status IN ('PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')
-          AND ${timeCol} IS NOT NULL
-          AND CAST(${timeCol} AS DATE) = @target_date
-        ORDER BY created_at DESC
-      `);
-
-      return result.recordset || [];
+      logger.info(`Request ${id} marked as boarded`, { boardedBy, location });
+      return this.findById(id);
     } catch (error) {
-      logger.error('Error finding recurring trips for employee/date:', error);
-      return [];
+      if (error instanceof NotFoundError) throw error;
+      throw new DatabaseError('Failed to mark as boarded', error, 'UPDATE');
     }
+  }
+
+  static async markDropped(id, droppedAt, location, droppedBy) {
+    try {
+      const result = await getPool().request()
+        .input('id', sql.Int, this.normalizeInt(id))
+        .input('droppedAt', sql.DateTime, droppedAt || new Date())
+        .input('location', sql.NVarChar(500), location)
+        .input('status', sql.NVarChar(50), 'COMPLETED')
+        .query(`
+          UPDATE cab_requests
+          SET actual_dropoff_time = @droppedAt,
+              dropping_area = @location,
+              status = @status,
+              updated_at = GETDATE()
+          WHERE id = @id AND is_active = 1
+
+          SELECT @@ROWCOUNT as affected
+        `);
+
+      if (result.recordset[0].affected === 0) {
+        throw new NotFoundError('Request', id);
+      }
+
+      logger.info(`Request ${id} marked as dropped`, { droppedBy, location });
+      return this.findById(id);
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error;
+      throw new DatabaseError('Failed to mark as dropped', error, 'UPDATE');
+    }
+  }
+
+  static async cancel(id, reason = 'Cancelled', cancelledBy) {
+    try {
+      const result = await getPool().request()
+        .input('id', sql.Int, this.normalizeInt(id))
+        .input('reason', sql.NVarChar(500), reason)
+        .input('status', sql.NVarChar(50), 'CANCELLED')
+        .query(`
+          UPDATE cab_requests
+          SET status = @status,
+              notes = ISNULL(notes, '') + '; CANCELLED: ' + @reason,
+              updated_at = GETDATE()
+          WHERE id = @id AND is_active = 1 AND status IN ('PENDING', 'APPROVED', 'ASSIGNED')
+
+          SELECT @@ROWCOUNT as affected
+        `);
+
+      if (result.recordset[0].affected === 0) {
+        throw new ConflictError('Request cannot be cancelled in current state');
+      }
+
+      logger.info(`Request ${id} cancelled`, { reason, cancelledBy });
+      return this.findById(id);
+    } catch (error) {
+      if (error instanceof ConflictError) throw error;
+      throw new DatabaseError('Failed to cancel request', error, 'UPDATE');
+    }
+  }
+
+  static async softDelete(id, deletedBy) {
+    try {
+      const result = await getPool().request()
+        .input('id', sql.Int, this.normalizeInt(id))
+        .input('deletedBy', sql.Int, this.normalizeInt(deletedBy))
+        .input('deletedAt', sql.DateTime, new Date())
+        .query(`
+          UPDATE cab_requests
+          SET is_active = 0, deleted_at = @deletedAt, deleted_by = @deletedBy
+          WHERE id = @id
+
+          SELECT @@ROWCOUNT as affected
+        `);
+
+      if (result.recordset[0].affected === 0) {
+        throw new NotFoundError('Request', id);
+      }
+
+      logger.info(`Request ${id} soft deleted`, { deletedBy });
+      return true;
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error;
+      throw new DatabaseError('Failed to delete request', error, 'DELETE');
+    }
+  }
+
+  static _formatResponse(dbRecord) {
+    return {
+      id: dbRecord.id,
+      employee_id: dbRecord.employee_id,
+      cab_id: dbRecord.cab_id,
+      route_id: dbRecord.route_id,
+      pickup_location: dbRecord.pickup_location,
+      drop_location: dbRecord.drop_location,
+      pickup_latitude: dbRecord.pickup_latitude,
+      pickup_longitude: dbRecord.pickup_longitude,
+      drop_latitude: dbRecord.drop_latitude,
+      drop_longitude: dbRecord.drop_longitude,
+      pickup_time: utcToIST(dbRecord.pickup_time),
+      passengers: dbRecord.passengers,
+      purpose: dbRecord.purpose,
+      request_type: dbRecord.request_type,
+      priority: dbRecord.priority,
+      status: dbRecord.status,
+      assigned_at: utcToIST(dbRecord.assigned_at),
+      actual_pickup_time: utcToIST(dbRecord.actual_pickup_time),
+      actual_dropoff_time: utcToIST(dbRecord.actual_dropoff_time),
+      boarding_area: dbRecord.boarding_area,
+      dropping_area: dbRecord.dropping_area,
+      delay_reason: dbRecord.delay_reason,
+      notes: dbRecord.notes,
+      created_at: utcToIST(dbRecord.created_at),
+      updated_at: utcToIST(dbRecord.updated_at),
+      deleted_at: utcToIST(dbRecord.deleted_at),
+      deleted_by: dbRecord.deleted_by
+    };
   }
 }
 

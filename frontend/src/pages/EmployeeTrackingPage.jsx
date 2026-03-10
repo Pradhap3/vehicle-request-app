@@ -401,6 +401,15 @@ const EmployeeTrackingPage = () => {
                     {nextStop?.name && (
                     <p className="text-xs mt-1">{t('tracking_next_stop')}: {nextStop.name}</p>
                   )}
+                  {tracking.eta?.toNextStopMinutes != null && (
+                    <p className="text-xs mt-1">ETA to next stop: {tracking.eta.toNextStopMinutes} min</p>
+                  )}
+                  {tracking.eta?.finalEtaMinutes != null && (
+                    <p className="text-xs">Trip ETA: {tracking.eta.finalEtaMinutes} min</p>
+                  )}
+                  {tracking.eta?.routeCompletionPct != null && (
+                    <p className="text-xs">Route completion: {tracking.eta.routeCompletionPct}%</p>
+                  )}
                   {tracking.distances?.toBoardingKm != null && (
                     <p className="text-xs mt-1">{t('tracking_distance_to_boarding')}: {tracking.distances.toBoardingKm} km</p>
                   )}
@@ -436,6 +445,18 @@ const EmployeeTrackingPage = () => {
               </div>
             ) : (
               <p className="text-sm text-gray-500">{t('tracking_route_not_configured')}</p>
+            )}
+            {tracking.remainingPickupPoints?.length > 0 && (
+              <div className="mt-4 border-t pt-3">
+                <p className="text-sm font-medium text-gray-800 mb-2">Remaining points</p>
+                <div className="space-y-1">
+                  {tracking.remainingPickupPoints.slice(0, 5).map((point, index) => (
+                    <p key={`${point.name}-${index}`} className="text-xs text-gray-500">
+                      {index + 1}. {point.name || point.kind}
+                    </p>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
