@@ -142,6 +142,44 @@ class Notification {
     }
   }
 
+  static async findExistingForUserTypeOnDate(userId, type, targetDate) {
+    try {
+      const pool = getPool();
+      const schema = await this.getSchema();
+      if (!schema.userColumn || !userId || !type || !targetDate) return null;
+
+      const request = pool.request()
+        .input('type', sql.NVarChar(50), type)
+        .input('target_date', sql.Date, String(targetDate).slice(0, 10));
+      this.bindFlexibleId(request, 'user_id', userId);
+
+      const result = await request.query(`
+        SELECT TOP 1 *
+        FROM notifications
+        WHERE ${schema.userColumn} = @user_id
+          AND type = @type
+          AND CAST(created_at AS DATE) = @target_date
+        ORDER BY created_at DESC
+      `);
+      return result.recordset[0] || null;
+    } catch (error) {
+      logger.error('Error fetching existing daily notification:', error);
+      return null;
+    }
+  }
+
+  static async createOncePerDate(notificationData, targetDate) {
+    const existing = await this.findExistingForUserTypeOnDate(
+      notificationData.user_id ?? notificationData.recipient_id ?? null,
+      notificationData.type,
+      targetDate
+    );
+    if (existing) {
+      return existing;
+    }
+    return this.create(notificationData);
+  }
+
   static async markAsRead(id, userId = null) {
     try {
       const pool = getPool();

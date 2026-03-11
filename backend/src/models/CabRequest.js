@@ -493,6 +493,7 @@ class CabRequest {
       drop_latitude: dropLatitude,
       drop_longitude: dropLongitude,
       pickup_time: utcToIST(dbRecord.pickup_time),
+      requested_time: utcToIST(dbRecord.pickup_time),
       passengers: dbRecord.passengers,
       purpose: dbRecord.purpose,
       request_type: dbRecord.request_type,

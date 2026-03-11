@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "migrate": "node migrations/run.js",
     "migrate:columns": "node migrations/add-missing-columns.js",
+    "cleanup:recurring": "node scripts/cleanup-recurring-duplicates.js",
     "seed": "node migrations/seed.js",
     "test": "jest --coverage",
     "lint": "eslint src/"

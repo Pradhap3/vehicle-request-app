@@ -9,6 +9,7 @@ class RecurringTransportService {
   static officeKeywords = ['aisin', 'narasapura', 'karinaikanahalli', '563133', 'aisin automotive karnataka'];
   static officeName = process.env.OFFICE_NAME || 'Aisin Automotive Karnataka Private Limited, 106-P, Karinaikanahalli, KIADB Industrial Area, Karnataka 563133';
   static localOffsetMinutes = 330;
+  static activeStatuses = ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'];
   static shiftRules = {
     SHIFT_1: { inboundAt: '05:30:00', outboundAt: '14:50:00', inboundAssignAt: '03:30:00', outboundAssignLeadMinutes: 30 },
     SHIFT_2: { inboundAt: '14:30:00', outboundAt: '23:15:00', inboundAssignAt: '12:00:00', outboundAssignLeadMinutes: 30 },
@@ -44,6 +45,27 @@ class RecurringTransportService {
     const second = new Date(b);
     if (Number.isNaN(first.getTime()) || Number.isNaN(second.getTime())) return false;
     return Math.abs(first.getTime() - second.getTime()) < 60000;
+  }
+
+  static extractDateKey(record) {
+    const rawValue = record?.pickup_time || record?.requested_time || record?.created_at || null;
+    if (!rawValue) return null;
+    const parsed = new Date(rawValue);
+    if (Number.isNaN(parsed.getTime())) return String(rawValue).slice(0, 10) || null;
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  static statusPriority(status) {
+    const priorities = {
+      IN_PROGRESS: 6,
+      ASSIGNED: 5,
+      APPROVED: 4,
+      PENDING: 3,
+      COMPLETED: 2,
+      CANCELLED: 1,
+      REJECTED: 0
+    };
+    return priorities[String(status || '').toUpperCase()] ?? -1;
   }
 
   static async syncRecurringTrip(existing, tripTemplate) {
@@ -180,6 +202,8 @@ class RecurringTransportService {
     }
 
     const sortedTrips = [...recurringTrips].sort((a, b) => {
+      const statusDelta = this.statusPriority(b.status) - this.statusPriority(a.status);
+      if (statusDelta !== 0) return statusDelta;
       const aTime = new Date(a.requested_time || a.pickup_time || a.created_at || 0).getTime();
       const bTime = new Date(b.requested_time || b.pickup_time || b.created_at || 0).getTime();
       return bTime - aTime;
@@ -187,7 +211,7 @@ class RecurringTransportService {
 
     const keeper = sortedTrips[0];
     for (const duplicateTrip of sortedTrips.slice(1)) {
-      if (['PENDING', 'APPROVED'].includes(duplicateTrip.status)) {
+      if (['PENDING', 'APPROVED', 'ASSIGNED'].includes(duplicateTrip.status)) {
         await CabRequest.cancel(duplicateTrip.id);
       }
     }
@@ -219,21 +243,17 @@ class RecurringTransportService {
         const tripTemplates = this.buildTripTemplates(profile, dateKey);
 
         for (const tripTemplate of tripTemplates) {
-          await this.cleanupRecurringDuplicates(profile.employee_id, dateKey, tripTemplate.request_type);
-
-          const existing = await CabRequest.findActiveTripForEmployeeOnDate(
+          const existing = await this.cleanupRecurringDuplicates(
             profile.employee_id,
             dateKey,
-            [tripTemplate.request_type]
+            tripTemplate.request_type
           );
-          const existingDate = existing?.requested_time
-            ? new Date(existing.requested_time).toISOString().slice(0, 10)
-            : null;
+          const existingDate = this.extractDateKey(existing);
 
           if (
             existing &&
             existingDate === dateKey &&
-            ['PENDING', 'APPROVED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED'].includes(existing.status)
+            this.activeStatuses.includes(existing.status)
           ) {
             await this.syncRecurringTrip(existing, tripTemplate);
             continue;
@@ -273,13 +293,18 @@ class RecurringTransportService {
             await Trip.syncPassengers(trip.id, [request]);
           }
 
-          await Notification.create({
+          await Notification.createOncePerDate({
             user_id: profile.employee_id,
             type: tripTemplate.notificationType,
             title: tripTemplate.title,
             message: tripTemplate.message,
-            data: { request_id: request?.id, route: '/employee' }
-          });
+            data: {
+              request_id: request?.id,
+              route: '/employee',
+              trip_date: dateKey,
+              request_type: tripTemplate.request_type
+            }
+          }, dateKey);
 
           if (io) {
             io.to(`user_${profile.employee_id}`).emit('notification', {
