@@ -1,0 +1,25 @@
+{
+  "name": "aisin-fleet-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "App.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "engines": {
+    "node": ">=18 <25"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.23.1",
+    "axios": "^1.7.9",
+    "expo": "^53.0.0",
+    "expo-location": "^18.1.6",
+    "expo-status-bar": "^2.1.1",
+    "react": "^18.3.1",
+    "react-native": "^0.76.6",
+    "socket.io-client": "^4.8.1"
+  }
+}

@@ -4,6 +4,8 @@ const Cab = require('../models/Cab');
 const CabRequest = require('../models/CabRequest');
 const Route = require('../models/Route');
 const RouteStop = require('../models/RouteStop');
+const Trip = require('../models/Trip');
+const BoardingStatus = require('../models/BoardingStatus');
 const RecurringTransportService = require('../services/RecurringTransportService');
 const RouteOptimizationService = require('../services/RouteOptimizationService');
 const logger = require('../utils/logger');
@@ -306,9 +308,12 @@ exports.getDriverDashboard = async (req, res) => {
     const assignments = RouteOptimizationService.optimizeSequence(
       await CabRequest.getAssignedRequestsForCab(cab.id, today)
     );
+    const activeTrip = await Trip.findActiveForCab(cab.id);
     const primaryRouteId = assignments[0]?.route_id || null;
     const route = primaryRouteId ? await Route.findById(primaryRouteId) : null;
     const stops = primaryRouteId ? await RouteStop.findByRouteId(primaryRouteId) : [];
+    const waitingPassengers = primaryRouteId ? await BoardingStatus.getWaitingPassengers(primaryRouteId, today) : [];
+    const noShows = primaryRouteId ? await BoardingStatus.getNoShowsForRoute(primaryRouteId, today) : [];
     const routeMetrics = assignments.length > 0
       ? RouteOptimizationService.buildRouteMetrics(assignments, assignments[0]?.pickup_time || new Date())
       : { stopPlan: [], durationMinutes: 0, distanceKm: 0 };
@@ -324,10 +329,19 @@ exports.getDriverDashboard = async (req, res) => {
       success: true,
       data: {
         cab,
+        trip: activeTrip,
         route: route ? { ...route, stops: stopsWithEta, route_distance_km: routeMetrics.distanceKm, route_duration_minutes: routeMetrics.durationMinutes } : null,
         assignments,
         passengers: assignments,
+        manifest: activeTrip ? await Trip.findManifestByTripId(activeTrip.id) : [],
         locationEnabled: !!(cab.current_latitude && cab.current_longitude),
+        operations: {
+          waitingPassengers,
+          noShows,
+          totalPassengers: assignments.length,
+          boardedPassengers: assignments.filter((row) => String(row.status || '').toUpperCase() === 'IN_PROGRESS').length,
+          droppedPassengers: assignments.filter((row) => String(row.status || '').toUpperCase() === 'COMPLETED').length
+        },
         optimization: {
           stopPlan: routeMetrics.stopPlan,
           routeDistanceKm: routeMetrics.distanceKm,

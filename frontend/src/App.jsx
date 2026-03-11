@@ -21,6 +21,7 @@ import EmployeeDashboardPage from './pages/EmployeeDashboardPage';
 import EmployeeTrackingPage from './pages/EmployeeTrackingPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import SecurityGatePage from './pages/SecurityGatePage';
 
 // Loading component
 const LoadingScreen = () => (
@@ -52,6 +53,8 @@ function App() {
       case 'EMPLOYEE':
       case 'USER':
         return '/employee';
+      case 'SECURITY':
+        return '/security/gate';
       default:
         return '/dashboard';
     }
@@ -139,6 +142,14 @@ function App() {
                   <LiveTrackingPage />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/security/gate"
+              element={
+                <ProtectedRoute allowedRoles={['SECURITY', 'HR_ADMIN', 'ADMIN']}>
+                  <SecurityGatePage />
+                </ProtectedRoute>
+              }
             />
 
             {/* Driver Routes */}

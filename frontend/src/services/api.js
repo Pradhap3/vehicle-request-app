@@ -202,4 +202,14 @@ export const dashboardAPI = {
   getDriverPerformance: () => api.get('/api/dashboard/driver-performance')
 };
 
+export const tripAPI = {
+  getMyTrips: () => api.get('/api/employee/trips'),
+  getDriverTrips: () => api.get('/api/driver/trips')
+};
+
+export const securityAPI = {
+  scanVehicle: (data) => api.post('/api/security/gate/scan', data),
+  getLogs: (params) => api.get('/api/security/gate/logs', { params })
+};
+
 export default api;

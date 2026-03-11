@@ -3,6 +3,7 @@
 const { sql, getPool } = require('../config/database');
 const logger = require('../utils/logger');
 const RouteOptimizationService = require('../services/RouteOptimizationService');
+const Trip = require('../models/Trip');
 
 class SmartAllocationService {
   static schemaCache = null;
@@ -238,6 +239,7 @@ class SmartAllocationService {
       const allocations = [];
 
       for (const assignment of optimizedAssignments) {
+        let trip = null;
         for (const request of assignment.cluster.requests) {
           const approveReq = pool.request();
           this.bindFlexibleId(approveReq, 'id', request.id);
@@ -267,6 +269,28 @@ class SmartAllocationService {
             routeDurationMinutes: assignment.cluster.routeMetrics.durationMinutes,
             utilizationPct: assignment.utilizationPct
           });
+        }
+
+        const firstRequest = assignment.cluster.requests[0];
+        if (firstRequest) {
+          trip = await Trip.upsertForRequest({
+            request_id: firstRequest.id,
+            route_id: firstRequest.route_id || routeId,
+            cab_id: assignment.cab.id,
+            driver_id: assignment.cab.driver_id || null,
+            trip_date: String(date || new Date().toISOString().slice(0, 10)).slice(0, 10),
+            trip_direction: firstRequest.trip_direction || 'INBOUND',
+            trip_category: 'DAILY',
+            planned_start_time: firstRequest.pickup_time || null,
+            planned_end_time: null,
+            status: 'ASSIGNED',
+            planned_distance_km: assignment.cluster.routeMetrics.distanceKm,
+            planned_duration_minutes: assignment.cluster.routeMetrics.durationMinutes,
+            optimization_score: assignment.score
+          });
+          if (trip?.id) {
+            await Trip.syncPassengers(trip.id, assignment.cluster.requests);
+          }
         }
       }
       

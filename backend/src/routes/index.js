@@ -11,6 +11,8 @@ const requestsController = require('../controllers/requestsController');
 const notificationsController = require('../controllers/notificationsController');
 const dashboardController = require('../controllers/dashboardController');
 const transportController = require('../controllers/transportController');
+const tripsController = require('../controllers/tripsController');
+const securityGateController = require('../controllers/securityGateController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 const isUuidOrInt = (value) =>
@@ -60,6 +62,18 @@ router.get('/transport/tracking',
   transportController.getMyTracking
 );
 
+router.get('/employee/trips',
+  authenticate,
+  authorize('EMPLOYEE', 'USER'),
+  tripsController.getMyTrips
+);
+
+router.get('/driver/trips',
+  authenticate,
+  authorize('CAB_DRIVER', 'DRIVER'),
+  tripsController.getDriverTrips
+);
+
 // ==================== USER ROUTES ====================
 router.get('/users', 
   authenticate, 
@@ -93,7 +107,7 @@ router.post('/users',
     body('name').notEmpty(),
     body('email').isEmail().normalizeEmail(),
     body('department').optional(),
-    body('role').isIn(['HR_ADMIN', 'ADMIN', 'EMPLOYEE', 'USER', 'CAB_DRIVER', 'DRIVER']),
+    body('role').isIn(['HR_ADMIN', 'ADMIN', 'EMPLOYEE', 'USER', 'CAB_DRIVER', 'DRIVER', 'SECURITY']),
     body('password').isLength({ min: 6 })
   ],
   usersController.createUser
@@ -393,6 +407,23 @@ router.get('/dashboard/driver-performance',
   authenticate, 
   authorize('HR_ADMIN', 'ADMIN'), 
   dashboardController.getDriverPerformance
+);
+
+// ==================== SECURITY GATE ROUTES ====================
+router.post('/security/gate/scan',
+  authenticate,
+  authorize('SECURITY', 'HR_ADMIN', 'ADMIN'),
+  [
+    body('plate_number').notEmpty(),
+    body('gate_code').notEmpty()
+  ],
+  securityGateController.scanVehicle
+);
+
+router.get('/security/gate/logs',
+  authenticate,
+  authorize('SECURITY', 'HR_ADMIN', 'ADMIN'),
+  securityGateController.getLogs
 );
 
 // ==================== HEALTH CHECK ====================

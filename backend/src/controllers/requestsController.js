@@ -4,6 +4,8 @@ const CabRequest = require('../models/CabRequest');
 const Cab = require('../models/Cab');
 const SmartAllocationService = require('../services/SmartAllocationService');
 const Notification = require('../models/Notification');
+const BoardingStatus = require('../models/BoardingStatus');
+const { getPool } = require('../config/database');
 const logger = require('../utils/logger');
 
 const normalizeId = (value) => {
@@ -70,6 +72,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
     pickup_time,
     passengers = 1,
     purpose,
+    request_type,
     route_id,
     pickup_latitude,
     pickup_longitude,
@@ -97,7 +100,7 @@ exports.createRequest = asyncHandler(async (req, res) => {
     passengers,
     purpose,
     route_id: normalizeId(route_id),
-    request_type: 'ADHOC'
+    request_type: request_type || 'ADHOC'
   });
 
   try {
@@ -192,6 +195,7 @@ exports.markBoarded = asyncHandler(async (req, res) => {
 
   const requestId = normalizeId(req.params.id);
   const request = await CabRequest.markBoarded(requestId, new Date(), boarding_area, req.user.id);
+  await BoardingStatus.markBoarded(requestId, request.employee_id, boarding_area);
 
   await Notification.create({
     user_id: request.employee_id,
@@ -216,6 +220,7 @@ exports.markDropped = asyncHandler(async (req, res) => {
 
   const requestId = normalizeId(req.params.id);
   const request = await CabRequest.markDropped(requestId, new Date(), dropping_area, req.user.id);
+  await BoardingStatus.markDropped(requestId, request.employee_id, dropping_area);
 
   await Notification.create({
     user_id: request.employee_id,
@@ -233,11 +238,15 @@ exports.markDropped = asyncHandler(async (req, res) => {
 });
 
 exports.markNoShow = asyncHandler(async (req, res) => {
+  const requestId = normalizeId(req.params.id);
   const request = await CabRequest.cancel(
-    normalizeId(req.params.id),
+    requestId,
     `NO_SHOW: ${req.body?.reason || 'Passenger unavailable'}`,
     req.user.id
   );
+  if (request?.employee_id) {
+    await BoardingStatus.markNoShow(requestId, request.employee_id, req.body?.reason || 'Passenger unavailable');
+  }
 
   res.json({
     success: true,
@@ -273,8 +282,9 @@ exports.cancelRequest = asyncHandler(async (req, res) => {
 });
 
 exports.logCallAttempt = asyncHandler(async (req, res) => {
-  const { outcome, notes } = req.body;
-  if (!outcome || !['ANSWERED', 'BUSY', 'MISSED', 'INVALID'].includes(outcome)) {
+  const outcome = String(req.body?.outcome || req.body?.call_status || '').trim().toUpperCase();
+  const notes = req.body?.notes;
+  if (!outcome || !['ANSWERED', 'BUSY', 'MISSED', 'INVALID', 'ATTEMPTED', 'NO_PHONE'].includes(outcome)) {
     throw new ValidationError('Invalid outcome value');
   }
 
@@ -291,15 +301,45 @@ exports.logCallAttempt = asyncHandler(async (req, res) => {
 });
 
 exports.getStatistics = asyncHandler(async (req, res) => {
+  const pool = getPool();
+  const rangeDays = Math.min(Math.max(Number.parseInt(req.query?.days || '7', 10), 1), 90);
+  const summary = await pool.request()
+    .input('rangeDays', rangeDays)
+    .query(`
+      SELECT
+        COUNT(*) AS total_requests,
+        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelled,
+        SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'ASSIGNED' THEN 1 ELSE 0 END) AS assigned,
+        SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress,
+        AVG(CASE WHEN actual_pickup_time IS NOT NULL THEN DATEDIFF(MINUTE, pickup_time, actual_pickup_time) * 1.0 END) AS average_wait_minutes
+      FROM cab_requests
+      WHERE pickup_time >= DATEADD(DAY, -@rangeDays, GETDATE())
+    `);
+  const peakHours = await pool.request()
+    .input('rangeDays', rangeDays)
+    .query(`
+      SELECT TOP 5
+        DATEPART(HOUR, pickup_time) AS pickup_hour,
+        COUNT(*) AS total
+      FROM cab_requests
+      WHERE pickup_time >= DATEADD(DAY, -@rangeDays, GETDATE())
+      GROUP BY DATEPART(HOUR, pickup_time)
+      ORDER BY total DESC, pickup_hour ASC
+    `);
+
   res.json({
     success: true,
     data: {
-      totalRequests: 0,
-      completed: 0,
-      cancelled: 0,
-      pending: 0,
-      averageWaitTime: 0,
-      peakHours: []
+      totalRequests: summary.recordset[0]?.total_requests || 0,
+      completed: summary.recordset[0]?.completed || 0,
+      cancelled: summary.recordset[0]?.cancelled || 0,
+      pending: summary.recordset[0]?.pending || 0,
+      assigned: summary.recordset[0]?.assigned || 0,
+      inProgress: summary.recordset[0]?.in_progress || 0,
+      averageWaitTime: Number(summary.recordset[0]?.average_wait_minutes || 0),
+      peakHours: peakHours.recordset || []
     }
   });
 });

@@ -564,6 +564,53 @@ const DriverDashboardPage = () => {
           </div>
         )}
       </div>
+
+      {(dashboard?.operations || dashboard?.manifest?.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">Trip Operations</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-lg bg-gray-50 p-4">
+                <p className="text-sm text-gray-500">Waiting</p>
+                <p className="text-2xl font-semibold text-gray-800">{dashboard?.operations?.waitingPassengers?.length || 0}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-4">
+                <p className="text-sm text-gray-500">No-show</p>
+                <p className="text-2xl font-semibold text-gray-800">{dashboard?.operations?.noShows?.length || 0}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-4">
+                <p className="text-sm text-gray-500">Boarded</p>
+                <p className="text-2xl font-semibold text-gray-800">{dashboard?.operations?.boardedPassengers || 0}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-4">
+                <p className="text-sm text-gray-500">Dropped</p>
+                <p className="text-2xl font-semibold text-gray-800">{dashboard?.operations?.droppedPassengers || 0}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">Trip Manifest</h2>
+            {dashboard?.manifest?.length > 0 ? (
+              <div className="space-y-3">
+                {dashboard.manifest.map((item) => (
+                  <div key={`${item.id}-${item.employee_id}`} className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3">
+                    <div>
+                      <p className="font-medium text-gray-800">{item.employee_name || `Employee ${item.employee_id}`}</p>
+                      <p className="text-sm text-gray-500">{item.pickup_location || item.drop_location || 'Assigned stop'}</p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                      {item.no_show ? 'NO_SHOW' : item.is_dropped ? 'DROPPED' : item.is_boarded ? 'BOARDED' : item.status || 'ASSIGNED'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No active trip manifest available.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

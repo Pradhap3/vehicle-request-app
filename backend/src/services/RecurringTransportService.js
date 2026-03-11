@@ -1,6 +1,7 @@
 const CabRequest = require('../models/CabRequest');
 const TransportProfile = require('../models/TransportProfile');
 const Notification = require('../models/Notification');
+const Trip = require('../models/Trip');
 const logger = require('../utils/logger');
 
 class RecurringTransportService {
@@ -61,7 +62,7 @@ class RecurringTransportService {
       return existing;
     }
 
-    return CabRequest.update(existing.id, {
+    const updated = await CabRequest.update(existing.id, {
       pickup_time: tripTemplate.requestedAt,
       requested_time: tripTemplate.requestedAt,
       travel_time: tripTemplate.requestedAt,
@@ -73,6 +74,17 @@ class RecurringTransportService {
       destination_location: tripTemplate.dropLocation,
       dropping_area: tripTemplate.dropLocation
     });
+    await Trip.upsertForRequest({
+      request_id: updated.id,
+      route_id: updated.route_id || existing.route_id || null,
+      trip_date: String(tripTemplate.requestedAt.toISOString()).slice(0, 10),
+      trip_direction: tripTemplate.request_type === 'RECURRING_OUTBOUND' ? 'OUTBOUND' : 'INBOUND',
+      trip_category: 'DAILY',
+      shift_code: null,
+      planned_start_time: tripTemplate.requestedAt,
+      status: updated.status || 'PLANNED'
+    });
+    return updated;
   }
 
   static normalizeShift(rawShift) {
@@ -245,6 +257,21 @@ class RecurringTransportService {
             number_of_people: 1,
             request_type: tripTemplate.request_type
           });
+
+          const trip = await Trip.upsertForRequest({
+            request_id: request?.id,
+            route_id: profile.route_id || null,
+            trip_date: dateKey,
+            trip_direction: tripTemplate.request_type === 'RECURRING_OUTBOUND' ? 'OUTBOUND' : 'INBOUND',
+            trip_category: 'DAILY',
+            shift_code: profile.shift_code || null,
+            planned_start_time: tripTemplate.requestedAt,
+            planned_end_time: null,
+            status: 'PLANNED'
+          });
+          if (trip?.id) {
+            await Trip.syncPassengers(trip.id, [request]);
+          }
 
           await Notification.create({
             user_id: profile.employee_id,

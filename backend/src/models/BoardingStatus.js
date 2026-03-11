@@ -248,7 +248,27 @@ class BoardingStatus {
 
   static async getNoShowsForRoute(routeId, date) {
     try {
-      return [];
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'route_id', routeId);
+      request.input('date', sql.Date, String(date).slice(0, 10));
+      const result = await request.query(`
+        SELECT
+          bs.*,
+          u.name AS employee_name,
+          u.phone AS employee_phone,
+          cr.pickup_time,
+          cr.pickup_location,
+          cr.drop_location
+        FROM boarding_status bs
+        INNER JOIN cab_requests cr ON cr.id = bs.request_id
+        LEFT JOIN users u ON u.id = bs.employee_id
+        WHERE cr.route_id = @route_id
+          AND CAST(cr.pickup_time AS DATE) = @date
+          AND bs.no_show = 1
+        ORDER BY cr.pickup_time ASC, bs.updated_at DESC
+      `);
+      return result.recordset || [];
     } catch (error) {
       logger.error('Error fetching no-shows for route:', error);
       return [];
@@ -257,7 +277,36 @@ class BoardingStatus {
 
   static async getWaitingPassengers(routeId, date) {
     try {
-      return [];
+      const pool = getPool();
+      const request = pool.request();
+      bindFlexibleId(request, 'route_id', routeId);
+      request.input('date', sql.Date, String(date).slice(0, 10));
+      const result = await request.query(`
+        SELECT
+          cr.id AS request_id,
+          cr.employee_id,
+          cr.pickup_location,
+          cr.drop_location,
+          cr.pickup_time,
+          cr.status,
+          u.name AS employee_name,
+          u.phone AS employee_phone,
+          bs.is_boarded,
+          bs.is_dropped,
+          bs.no_show
+        FROM cab_requests cr
+        LEFT JOIN users u ON u.id = cr.employee_id
+        LEFT JOIN boarding_status bs
+          ON bs.request_id = cr.id
+         AND bs.employee_id = cr.employee_id
+        WHERE cr.route_id = @route_id
+          AND CAST(cr.pickup_time AS DATE) = @date
+          AND cr.status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS')
+          AND ISNULL(bs.is_boarded, 0) = 0
+          AND ISNULL(bs.no_show, 0) = 0
+        ORDER BY cr.pickup_time ASC, cr.id ASC
+      `);
+      return result.recordset || [];
     } catch (error) {
       logger.error('Error fetching waiting passengers:', error);
       return [];

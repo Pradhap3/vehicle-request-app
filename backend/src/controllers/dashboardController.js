@@ -2,10 +2,25 @@ const logger = require('../utils/logger');
 const { getPool } = require('../config/database');
 const SmartAllocationService = require('../ai/SmartAllocationService');
 
+const hasColumn = async (table, column) => {
+  const result = await getPool().request()
+    .input('table', table)
+    .input('column', column)
+    .query(`
+      SELECT COUNT(*) AS total
+      FROM sys.columns
+      WHERE object_id = OBJECT_ID(@table)
+        AND name = @column
+    `);
+  return Boolean(result.recordset[0]?.total);
+};
+
 // Get dashboard statistics
 exports.getStats = async (req, res) => {
   try {
     const pool = getPool();
+    const requestsHasIsActive = await hasColumn('cab_requests', 'is_active');
+    const requestActiveClause = requestsHasIsActive ? 'WHERE is_active = 1' : '';
 
     // Get all stats with simple queries that work with any schema
     const usersResult = await pool.request().query(`SELECT COUNT(*) as total FROM users WHERE is_active = 1`);
@@ -30,7 +45,7 @@ exports.getStats = async (req, res) => {
           SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as in_progress,
           SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed
         FROM cab_requests
-        WHERE is_active = 1
+        ${requestActiveClause}
       `);
       requestsData = {
         total: requestsResult.recordset[0]?.total || 0,
@@ -82,6 +97,7 @@ exports.getCapacityAnalytics = async (req, res) => {
 exports.getTripMetrics = async (req, res) => {
   try {
     const pool = getPool();
+    const requestsHasIsActive = await hasColumn('cab_requests', 'is_active');
     const result = await pool.request().query(`
       SELECT
         CAST(pickup_time AS DATE) AS trip_date,
@@ -90,8 +106,8 @@ exports.getTripMetrics = async (req, res) => {
         SUM(CASE WHEN status IN ('APPROVED', 'ASSIGNED', 'IN_PROGRESS') THEN 1 ELSE 0 END) AS active_trips,
         AVG(CASE WHEN actual_pickup_time IS NOT NULL THEN DATEDIFF(MINUTE, pickup_time, actual_pickup_time) * 1.0 END) AS avg_pickup_delay_min
       FROM cab_requests
-      WHERE is_active = 1
-        AND pickup_time >= DATEADD(DAY, -14, GETDATE())
+      WHERE pickup_time >= DATEADD(DAY, -14, GETDATE())
+        ${requestsHasIsActive ? 'AND is_active = 1' : ''}
       GROUP BY CAST(pickup_time AS DATE)
       ORDER BY trip_date DESC
     `);
@@ -106,6 +122,7 @@ exports.getTripMetrics = async (req, res) => {
 exports.getDriverPerformance = async (req, res) => {
   try {
     const pool = getPool();
+    const requestsHasIsActive = await hasColumn('cab_requests', 'is_active');
     const result = await pool.request().query(`
       SELECT
         u.id AS driver_id,
@@ -116,7 +133,7 @@ exports.getDriverPerformance = async (req, res) => {
         AVG(CASE WHEN cr.actual_pickup_time IS NOT NULL THEN DATEDIFF(MINUTE, cr.pickup_time, cr.actual_pickup_time) * 1.0 END) AS avg_pickup_delay_min
       FROM cabs c
       INNER JOIN users u ON u.id = c.driver_id
-      LEFT JOIN cab_requests cr ON cr.cab_id = c.id AND cr.is_active = 1 AND cr.pickup_time >= DATEADD(DAY, -30, GETDATE())
+      LEFT JOIN cab_requests cr ON cr.cab_id = c.id ${requestsHasIsActive ? 'AND cr.is_active = 1' : ''} AND cr.pickup_time >= DATEADD(DAY, -30, GETDATE())
       WHERE c.is_active = 1
       GROUP BY u.id, u.name, c.cab_number
       ORDER BY completed_trips DESC, total_trips DESC

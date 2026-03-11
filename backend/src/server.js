@@ -18,6 +18,7 @@ const EmailService = require('./services/EmailService');
 const SmartAllocationService = require('./ai/SmartAllocationService');
 const DelayMonitoringService = require('./services/DelayMonitoringService');
 const RecurringTransportService = require('./services/RecurringTransportService');
+const SchemaBootstrapService = require('./services/SchemaBootstrapService');
 
 const app = express();
 const server = http.createServer(app);
@@ -245,6 +246,7 @@ const startServer = async () => {
   try {
     // Connect to database
     await connectDB();
+    await SchemaBootstrapService.ensureSchema();
     
     // Initialize email service
     await EmailService.initialize();
