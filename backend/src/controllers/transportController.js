@@ -7,6 +7,7 @@ const Cab = require('../models/Cab');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const RouteOptimizationService = require('../services/RouteOptimizationService');
+const RouteGeometryService = require('../services/RouteGeometryService');
 const logger = require('../utils/logger');
 
 const OFFICE_FALLBACK = {
@@ -503,6 +504,12 @@ exports.getMyTracking = async (req, res) => {
       );
       return match ? { ...stop, eta_offset_minutes: match.eta_offset_minutes } : stop;
     });
+    const routeGeometry = await RouteGeometryService.getRoadGeometry(
+      sanitizedRoutePath.map((point) => ({
+        latitude: point.latitude,
+        longitude: point.longitude
+      }))
+    );
 
     res.json({
       success: true,
@@ -512,6 +519,7 @@ exports.getMyTracking = async (req, res) => {
         profile,
         route: route ? { ...route, stops: stopsWithEta, route_distance_km: routePlan.distanceKm, route_duration_minutes: routePlan.durationMinutes } : null,
         routePath: sanitizedRoutePath,
+        routeGeometry: routeGeometry,
         history,
         officePoint,
         boardingPoint,

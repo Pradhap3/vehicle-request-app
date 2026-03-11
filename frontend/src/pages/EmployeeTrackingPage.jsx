@@ -187,6 +187,9 @@ const EmployeeTrackingPage = () => {
 
   const routePathPoints = useMemo(
     () => {
+      if (Array.isArray(tracking?.routeGeometry?.points) && tracking.routeGeometry.points.length > 1) {
+        return tracking.routeGeometry.points;
+      }
       const office = tracking?.officePoint;
       return (tracking?.routePath || [])
         .filter((point) => {
@@ -196,7 +199,7 @@ const EmployeeTrackingPage = () => {
         })
         .map((point) => [point.latitude, point.longitude]);
     },
-    [tracking?.routePath, tracking?.officePoint]
+    [tracking?.routeGeometry?.points, tracking?.routePath, tracking?.officePoint]
   );
 
   const pathPoints = useMemo(

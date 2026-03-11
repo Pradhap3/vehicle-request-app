@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { cabAPI } from '../services/api';
+import { cabAPI, routeAPI } from '../services/api';
 import { useSocket } from '../context/SocketContext';
 import { useLanguage } from '../context/LanguageContext';
 import { 
@@ -14,6 +14,7 @@ import {
   Navigation
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { APP_NAME } from '../constants/app';
 
 // Fix for default marker icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -56,14 +57,50 @@ const createCarIcon = (status) => {
   });
 };
 
+const officeIcon = L.divIcon({
+  className: 'admin-office-marker',
+  html: `
+    <div style="
+      width: 20px;
+      height: 20px;
+      background: #ef4444;
+      border-radius: 4px;
+      border: 3px solid white;
+      box-shadow: 0 2px 10px rgba(239, 68, 68, 0.35);
+    "></div>
+  `,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
+});
+
+const stopIcon = L.divIcon({
+  className: 'admin-stop-marker',
+  html: `
+    <div style="
+      width: 16px;
+      height: 16px;
+      background: #10b981;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+    "></div>
+  `,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8]
+});
+
 // Component to update map view
-const MapUpdater = ({ center }) => {
+const MapUpdater = ({ center, bounds }) => {
   const map = useMap();
   useEffect(() => {
+    if (Array.isArray(bounds) && bounds.length >= 2) {
+      map.fitBounds(bounds, { padding: [40, 40] });
+      return;
+    }
     if (center) {
       map.setView(center, map.getZoom());
     }
-  }, [center, map]);
+  }, [bounds, center, map]);
   return null;
 };
 
@@ -71,11 +108,17 @@ const LiveTrackingPage = () => {
   const { t } = useLanguage();
   const [cabs, setCabs] = useState([]);
   const [selectedCab, setSelectedCab] = useState(null);
+  const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [mapCenter, setMapCenter] = useState([12.9716, 77.5946]); // Bangalore default
   const { driverLocations, connected } = useSocket();
   const mapRef = useRef(null);
+  const officePoint = useMemo(() => ({
+    name: import.meta.env.VITE_OFFICE_NAME || APP_NAME,
+    latitude: Number(import.meta.env.VITE_OFFICE_LATITUDE || 13.11),
+    longitude: Number(import.meta.env.VITE_OFFICE_LONGITUDE || 77.99)
+  }), []);
 
   const fetchCabs = async () => {
     try {
@@ -124,9 +167,65 @@ const LiveTrackingPage = () => {
     }
   };
 
+  useEffect(() => {
+    const loadRouteDetails = async () => {
+      if (!selectedCab?.route_id) {
+        setSelectedRoute(null);
+        return;
+      }
+      try {
+        const response = await routeAPI.getById(selectedCab.route_id);
+        setSelectedRoute(response.data?.data || null);
+      } catch (error) {
+        console.error('Error loading selected route:', error);
+        setSelectedRoute(null);
+      }
+    };
+
+    loadRouteDetails();
+  }, [selectedCab?.route_id]);
+
   const getCabsWithLocation = () => {
     return cabs.filter(cab => cab.current_latitude && cab.current_longitude);
   };
+
+  const routeStops = useMemo(
+    () => (selectedRoute?.stops || []).filter((stop) => stop.latitude != null && stop.longitude != null),
+    [selectedRoute?.stops]
+  );
+
+  const routePolyline = useMemo(() => {
+    if (Array.isArray(selectedRoute?.route_geometry?.points) && selectedRoute.route_geometry.points.length > 1) {
+      return selectedRoute.route_geometry.points;
+    }
+    const points = [];
+    if (selectedRoute?.start_latitude != null && selectedRoute?.start_longitude != null) {
+      points.push([selectedRoute.start_latitude, selectedRoute.start_longitude]);
+    } else if (officePoint.latitude != null && officePoint.longitude != null) {
+      points.push([officePoint.latitude, officePoint.longitude]);
+    }
+    routeStops.forEach((stop) => points.push([stop.latitude, stop.longitude]));
+    if (selectedRoute?.end_latitude != null && selectedRoute?.end_longitude != null) {
+      points.push([selectedRoute.end_latitude, selectedRoute.end_longitude]);
+    }
+    return points;
+  }, [officePoint.latitude, officePoint.longitude, routeStops, selectedRoute?.end_latitude, selectedRoute?.end_longitude, selectedRoute?.route_geometry?.points, selectedRoute?.start_latitude, selectedRoute?.start_longitude]);
+
+  const selectedCabHistory = useMemo(() => {
+    if (!selectedCab?.id) return [];
+    return [];
+  }, [selectedCab?.id]);
+
+  const mapBounds = useMemo(() => {
+    const points = [];
+    getCabsWithLocation().forEach((cab) => points.push([cab.current_latitude, cab.current_longitude]));
+    if (officePoint.latitude != null && officePoint.longitude != null) {
+      points.push([officePoint.latitude, officePoint.longitude]);
+    }
+    routeStops.forEach((stop) => points.push([stop.latitude, stop.longitude]));
+    routePolyline.forEach((point) => points.push(point));
+    return points;
+  }, [cabs, officePoint.latitude, officePoint.longitude, routePolyline, routeStops]);
 
   const statusColors = {
     AVAILABLE: 'bg-green-100 text-green-800 border-green-200',
@@ -181,7 +280,37 @@ const LiveTrackingPage = () => {
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-              <MapUpdater center={mapCenter} />
+              <MapUpdater center={mapCenter} bounds={mapBounds} />
+
+              {routePolyline.length > 1 && (
+                <Polyline positions={routePolyline} pathOptions={{ color: '#ef4444', weight: 5, opacity: 0.8 }} />
+              )}
+
+              {officePoint.latitude != null && officePoint.longitude != null && (
+                <Marker position={[officePoint.latitude, officePoint.longitude]} icon={officeIcon}>
+                  <Popup>
+                    <div className="p-2 min-w-[180px]">
+                      <p className="font-semibold text-gray-800">{officePoint.name}</p>
+                      <p className="text-sm text-gray-600">Office</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+
+              {routeStops.map((stop) => (
+                <Marker
+                  key={`route-stop-${stop.id}`}
+                  position={[stop.latitude, stop.longitude]}
+                  icon={stopIcon}
+                >
+                  <Popup>
+                    <div className="p-2 min-w-[180px]">
+                      <p className="font-semibold text-gray-800">{stop.stop_name}</p>
+                      <p className="text-sm text-gray-600">Stop sequence: {stop.stop_sequence}</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
               
               {getCabsWithLocation().map((cab) => (
                 <Marker
@@ -279,6 +408,20 @@ const LiveTrackingPage = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {selectedCab && (
+            <div className="mt-6 border-t border-gray-100 pt-4 space-y-3">
+              <h4 className="font-semibold text-gray-800">Selected Cab Details</h4>
+              <div className="text-sm text-gray-600 space-y-1">
+                <p><span className="font-medium text-gray-800">Cab:</span> {selectedCab.cab_number}</p>
+                <p><span className="font-medium text-gray-800">Driver:</span> {selectedCab.driver_name || 'Not assigned'}</p>
+                <p><span className="font-medium text-gray-800">Status:</span> {selectedCab.status}</p>
+                <p><span className="font-medium text-gray-800">Seats:</span> {selectedCab.capacity}</p>
+                {selectedRoute?.name ? <p><span className="font-medium text-gray-800">Route:</span> {selectedRoute.name}</p> : null}
+                {selectedRoute?.stops?.length ? <p><span className="font-medium text-gray-800">Stops:</span> {selectedRoute.stops.length}</p> : null}
+              </div>
             </div>
           )}
         </div>

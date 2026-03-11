@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const Route = require('../models/Route');
 const RouteStop = require('../models/RouteStop');
 const SmartAllocationService = require('../ai/SmartAllocationService');
+const RouteGeometryService = require('../services/RouteGeometryService');
 const logger = require('../utils/logger');
 
 // Get all routes
@@ -36,9 +37,36 @@ exports.getRouteById = async (req, res) => {
       });
     }
 
+    const geometrySeedPoints = [];
+    if (route.start_latitude != null && route.start_longitude != null) {
+      geometrySeedPoints.push({
+        latitude: route.start_latitude,
+        longitude: route.start_longitude
+      });
+    }
+    (route.stops || []).forEach((stop) => {
+      if (stop.latitude != null && stop.longitude != null) {
+        geometrySeedPoints.push({
+          latitude: stop.latitude,
+          longitude: stop.longitude
+        });
+      }
+    });
+    if (route.end_latitude != null && route.end_longitude != null) {
+      geometrySeedPoints.push({
+        latitude: route.end_latitude,
+        longitude: route.end_longitude
+      });
+    }
+
+    const routeGeometry = await RouteGeometryService.getRoadGeometry(geometrySeedPoints);
+
     res.json({
       success: true,
-      data: route
+      data: {
+        ...route,
+        route_geometry: routeGeometry
+      }
     });
   } catch (error) {
     logger.error('Get route error:', error);
