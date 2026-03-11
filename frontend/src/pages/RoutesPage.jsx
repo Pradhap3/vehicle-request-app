@@ -22,6 +22,8 @@ import toast from 'react-hot-toast';
 const createEmptyStop = (sequence = 1) => ({
   stop_name: '',
   stop_sequence: sequence,
+  latitude: '',
+  longitude: '',
   eta_offset_minutes: ''
 });
 
@@ -61,10 +63,12 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
     distance_km: route?.distance_km || '',
     estimated_time_minutes: route?.estimated_time_minutes || '',
     is_active: route?.is_active !== false,
-    stops: Array.isArray(route?.stops) && route.stops.length > 0
-      ? route.stops.map((stop, index) => ({
+      stops: Array.isArray(route?.stops) && route.stops.length > 0
+        ? route.stops.map((stop, index) => ({
           stop_name: stop.stop_name || '',
           stop_sequence: stop.stop_sequence || index + 1,
+          latitude: stop.latitude ?? '',
+          longitude: stop.longitude ?? '',
           eta_offset_minutes: stop.eta_offset_minutes ?? ''
         }))
       : [createEmptyStop()]
@@ -83,6 +87,8 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
         ? route.stops.map((stop, index) => ({
             stop_name: stop.stop_name || '',
             stop_sequence: stop.stop_sequence || index + 1,
+            latitude: stop.latitude ?? '',
+            longitude: stop.longitude ?? '',
             eta_offset_minutes: stop.eta_offset_minutes ?? ''
           }))
         : [createEmptyStop()]
@@ -142,6 +148,8 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
         .map((stop, index) => ({
           stop_name: stop.stop_name.trim(),
           stop_sequence: index + 1,
+          latitude: stop.latitude === '' ? null : parseFloat(stop.latitude),
+          longitude: stop.longitude === '' ? null : parseFloat(stop.longitude),
           eta_offset_minutes: stop.eta_offset_minutes === '' ? null : parseInt(stop.eta_offset_minutes, 10)
         }));
 
@@ -270,7 +278,7 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
         <div className="space-y-3">
           {formData.stops.map((stop, index) => (
             <div key={`${route?.id || 'new'}-stop-${index}`} className="grid grid-cols-12 gap-3 items-end rounded-lg border border-gray-200 p-3">
-              <div className="col-span-6">
+              <div className="col-span-12 md:col-span-4">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Stop Name</label>
                 <input
                   type="text"
@@ -280,7 +288,7 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
                   placeholder="Kolar Bus Stand"
                 />
               </div>
-              <div className="col-span-2">
+              <div className="col-span-6 md:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Sequence</label>
                 <input
                   type="number"
@@ -289,7 +297,29 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
                   className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-500"
                 />
               </div>
-              <div className="col-span-3">
+              <div className="col-span-6 md:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Latitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={stop.latitude}
+                  onChange={(e) => updateStop(index, 'latitude', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="12.9716"
+                />
+              </div>
+              <div className="col-span-6 md:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Longitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={stop.longitude}
+                  onChange={(e) => updateStop(index, 'longitude', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="77.5946"
+                />
+              </div>
+              <div className="col-span-10 md:col-span-1">
                 <label className="block text-xs font-medium text-gray-600 mb-1">ETA Offset</label>
                 <input
                   type="number"
@@ -300,7 +330,7 @@ const RouteForm = ({ route, onSubmit, onCancel, loading }) => {
                   placeholder="10"
                 />
               </div>
-              <div className="col-span-1">
+              <div className="col-span-2 md:col-span-1">
                 <button
                   type="button"
                   onClick={() => removeStop(index)}
