@@ -9,6 +9,7 @@ const { RaceConditionError, AllocationError, NotFoundError } = require('../utils
 const { istToUTC, formatForResponse } = require('../utils/timezone');
 const RouteOptimizationService = require('./RouteOptimizationService');
 const Notification = require('../models/Notification');
+const CabRequest = require('../models/CabRequest');
 
 class SmartAllocationService {
   /**
@@ -149,6 +150,7 @@ class SmartAllocationService {
   static async autoAllocateUpcomingRequests(windowMinutes = 30) {
     try {
       const pool = getPool();
+      const columns = await CabRequest.getColumnMappings();
       const now = new Date();
       const windowEnd = new Date(now.getTime() + windowMinutes * 60000);
 
@@ -161,7 +163,7 @@ class SmartAllocationService {
             cr.id, 
             cr.employee_id, 
             cr.pickup_location, 
-            cr.drop_location,
+            cr.${columns.dropLocation} AS drop_location,
             cr.pickup_time,
             cr.passengers,
             cr.route_id,

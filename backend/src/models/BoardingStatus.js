@@ -2,6 +2,7 @@
 const { sql, getPool } = require('../config/database');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const CabRequest = require('./CabRequest');
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -248,6 +249,7 @@ class BoardingStatus {
 
   static async getNoShowsForRoute(routeId, date) {
     try {
+      const columns = await CabRequest.getColumnMappings();
       const pool = getPool();
       const request = pool.request();
       bindFlexibleId(request, 'route_id', routeId);
@@ -259,7 +261,7 @@ class BoardingStatus {
           u.phone AS employee_phone,
           cr.pickup_time,
           cr.pickup_location,
-          cr.drop_location
+          cr.${columns.dropLocation} AS drop_location
         FROM boarding_status bs
         INNER JOIN cab_requests cr ON cr.id = bs.request_id
         LEFT JOIN users u ON u.id = bs.employee_id
@@ -277,6 +279,7 @@ class BoardingStatus {
 
   static async getWaitingPassengers(routeId, date) {
     try {
+      const columns = await CabRequest.getColumnMappings();
       const pool = getPool();
       const request = pool.request();
       bindFlexibleId(request, 'route_id', routeId);
@@ -286,7 +289,7 @@ class BoardingStatus {
           cr.id AS request_id,
           cr.employee_id,
           cr.pickup_location,
-          cr.drop_location,
+          cr.${columns.dropLocation} AS drop_location,
           cr.pickup_time,
           cr.status,
           u.name AS employee_name,

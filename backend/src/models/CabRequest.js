@@ -21,8 +21,25 @@ class CabRequest {
     `);
     const columns = new Set(result.recordset.map((row) => String(row.column_name).toLowerCase()));
     const hasColumn = (name) => columns.has(String(name).toLowerCase());
-    this.schemaCache = { hasColumn, columns };
+    const pickColumn = (...names) => names.find((name) => hasColumn(name)) || null;
+    this.schemaCache = {
+      hasColumn,
+      columns,
+      pickColumn,
+      dropLocationColumn: pickColumn('drop_location', 'dropoff_location'),
+      dropLatitudeColumn: pickColumn('drop_latitude', 'dropoff_latitude'),
+      dropLongitudeColumn: pickColumn('drop_longitude', 'dropoff_longitude')
+    };
     return this.schemaCache;
+  }
+
+  static async getColumnMappings() {
+    const schema = await this.getSchema();
+    return {
+      dropLocation: schema.dropLocationColumn || 'dropoff_location',
+      dropLatitude: schema.dropLatitudeColumn || 'dropoff_latitude',
+      dropLongitude: schema.dropLongitudeColumn || 'dropoff_longitude'
+    };
   }
 
   static async activeClause(alias = 'cr') {
@@ -53,8 +70,8 @@ class CabRequest {
       .input('dropLocation', sql.NVarChar(500), dropLocation)
       .input('pickupLatitude', sql.Float, data.pickup_latitude || null)
       .input('pickupLongitude', sql.Float, data.pickup_longitude || null)
-      .input('dropLatitude', sql.Float, data.drop_latitude || null)
-      .input('dropLongitude', sql.Float, data.drop_longitude || null)
+      .input('dropLatitude', sql.Float, data.drop_latitude ?? data.dropoff_latitude ?? null)
+      .input('dropLongitude', sql.Float, data.drop_longitude ?? data.dropoff_longitude ?? null)
       .input('pickupTime', sql.DateTime, istToUTC(pickupTime))
       .input('passengers', sql.Int, this.normalizeInt(data.passengers || data.number_of_people) || 1)
       .input('purpose', sql.NVarChar(500), data.purpose || null)
@@ -67,8 +84,8 @@ class CabRequest {
       .input('createdAt', sql.DateTime, new Date());
 
     const columns = [
-      'employee_id', 'route_id', 'pickup_location', 'drop_location',
-      'pickup_latitude', 'pickup_longitude', 'drop_latitude', 'drop_longitude',
+      'employee_id', 'route_id', 'pickup_location', schema.dropLocationColumn,
+      'pickup_latitude', 'pickup_longitude', schema.dropLatitudeColumn, schema.dropLongitudeColumn,
       'pickup_time', 'passengers', 'purpose', 'request_type', 'priority', 'status',
       'assigned_at', 'boarding_area', 'dropping_area', 'created_at', 'updated_at'
     ];
@@ -264,6 +281,7 @@ class CabRequest {
   static async update(id, updates = {}) {
     const existing = await this.findById(id);
     if (!existing) throw new NotFoundError('Request', id);
+    const schema = await this.getSchema();
 
     const payload = {
       route_id: updates.route_id ?? existing.route_id,
@@ -299,7 +317,7 @@ class CabRequest {
           UPDATE cab_requests
           SET route_id = @routeId,
               pickup_location = @pickupLocation,
-              drop_location = @dropLocation,
+              ${schema.dropLocationColumn} = @dropLocation,
               pickup_time = @pickupTime,
               assigned_at = @assignedAt,
               boarding_area = @boardingArea,
@@ -460,17 +478,20 @@ class CabRequest {
   }
 
   static _formatResponse(dbRecord) {
+    const dropLocation = dbRecord.drop_location ?? dbRecord.dropoff_location ?? null;
+    const dropLatitude = dbRecord.drop_latitude ?? dbRecord.dropoff_latitude ?? null;
+    const dropLongitude = dbRecord.drop_longitude ?? dbRecord.dropoff_longitude ?? null;
     return {
       id: dbRecord.id,
       employee_id: dbRecord.employee_id,
       cab_id: dbRecord.cab_id,
       route_id: dbRecord.route_id,
       pickup_location: dbRecord.pickup_location,
-      drop_location: dbRecord.drop_location,
+      drop_location: dropLocation,
       pickup_latitude: dbRecord.pickup_latitude,
       pickup_longitude: dbRecord.pickup_longitude,
-      drop_latitude: dbRecord.drop_latitude,
-      drop_longitude: dbRecord.drop_longitude,
+      drop_latitude: dropLatitude,
+      drop_longitude: dropLongitude,
       pickup_time: utcToIST(dbRecord.pickup_time),
       passengers: dbRecord.passengers,
       purpose: dbRecord.purpose,
