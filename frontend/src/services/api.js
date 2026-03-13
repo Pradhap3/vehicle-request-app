@@ -212,4 +212,125 @@ export const securityAPI = {
   getLogs: (params) => api.get('/api/security/gate/logs', { params })
 };
 
+// ==================== V2 APIs (new modular endpoints) ====================
+
+export const bookingAPI = {
+  getAll: (params) => api.get('/api/v2/bookings', { params }),
+  getMy: () => api.get('/api/v2/bookings/my'),
+  getMyStats: () => api.get('/api/v2/bookings/my/stats'),
+  getById: (id) => api.get(`/api/v2/bookings/${id}`),
+  create: (data) => api.post('/api/v2/bookings', data),
+  update: (id, data) => api.put(`/api/v2/bookings/${id}`, data),
+  cancel: (id, reason) => api.post(`/api/v2/bookings/${id}/cancel`, { reason }),
+  approve: (id) => api.post(`/api/v2/bookings/${id}/approve`),
+  reject: (id, reason) => api.post(`/api/v2/bookings/${id}/reject`, { reason }),
+  assign: (id, data) => api.post(`/api/v2/bookings/${id}/assign`, data),
+  delete: (id) => api.delete(`/api/v2/bookings/${id}`)
+};
+
+export const tripAPIv2 = {
+  getAll: (params) => api.get('/api/v2/trips', { params }),
+  getById: (id) => api.get(`/api/v2/trips/${id}`),
+  getTimeline: (id) => api.get(`/api/v2/trips/${id}/timeline`),
+  getTrail: (id) => api.get(`/api/v2/trips/${id}/trail`),
+  getDriverToday: () => api.get('/api/v2/trips/driver/today'),
+  getEmployeeTrips: (params) => api.get('/api/v2/trips/employee/my', { params }),
+  getLocations: () => api.get('/api/v2/trips/locations'),
+  enRoute: (id, data) => api.post(`/api/v2/trips/${id}/en-route`, data),
+  arrived: (id, data) => api.post(`/api/v2/trips/${id}/arrived`, data),
+  pickup: (id, data) => api.post(`/api/v2/trips/${id}/pickup`, data),
+  start: (id, data) => api.post(`/api/v2/trips/${id}/start`, data),
+  complete: (id, data) => api.post(`/api/v2/trips/${id}/complete`, data),
+  cancel: (id, notes) => api.post(`/api/v2/trips/${id}/cancel`, { notes }),
+  noShow: (id, notes) => api.post(`/api/v2/trips/${id}/no-show`, { notes }),
+  escalate: (id, notes) => api.post(`/api/v2/trips/${id}/escalate`, { notes }),
+  updateLocation: (data) => api.post('/api/v2/trips/location/update', data)
+};
+
+export const vehicleAPI = {
+  getAll: (params) => api.get('/api/v2/vehicles', { params }),
+  getAvailable: () => api.get('/api/v2/vehicles/available'),
+  getById: (id) => api.get(`/api/v2/vehicles/${id}`),
+  create: (data) => api.post('/api/v2/vehicles', data),
+  update: (id, data) => api.put(`/api/v2/vehicles/${id}`, data),
+  delete: (id) => api.delete(`/api/v2/vehicles/${id}`)
+};
+
+export const driverAPI = {
+  getAll: (params) => api.get('/api/v2/drivers', { params }),
+  getOnline: () => api.get('/api/v2/drivers/online'),
+  getMe: () => api.get('/api/v2/drivers/me'),
+  getById: (id) => api.get(`/api/v2/drivers/${id}`),
+  create: (data) => api.post('/api/v2/drivers', data),
+  update: (id, data) => api.put(`/api/v2/drivers/${id}`, data),
+  toggleAvailability: (status) => api.post('/api/v2/drivers/availability', { status }),
+  delete: (id) => api.delete(`/api/v2/drivers/${id}`)
+};
+
+export const vendorAPI = {
+  getAll: () => api.get('/api/v2/vendors'),
+  getById: (id) => api.get(`/api/v2/vendors/${id}`),
+  create: (data) => api.post('/api/v2/vendors', data),
+  update: (id, data) => api.put(`/api/v2/vendors/${id}`, data),
+  delete: (id) => api.delete(`/api/v2/vendors/${id}`)
+};
+
+export const shiftAPI = {
+  getAll: () => api.get('/api/v2/shifts'),
+  getById: (id) => api.get(`/api/v2/shifts/${id}`),
+  create: (data) => api.post('/api/v2/shifts', data),
+  update: (id, data) => api.put(`/api/v2/shifts/${id}`, data),
+  delete: (id) => api.delete(`/api/v2/shifts/${id}`)
+};
+
+export const incidentAPI = {
+  getAll: (params) => api.get('/api/v2/incidents', { params }),
+  getById: (id) => api.get(`/api/v2/incidents/${id}`),
+  create: (data) => api.post('/api/v2/incidents', data),
+  sos: (data) => api.post('/api/v2/incidents/sos', data),
+  updateStatus: (id, data) => api.put(`/api/v2/incidents/${id}/status`, data)
+};
+
+export const ratingAPI = {
+  getAll: (params) => api.get('/api/v2/ratings', { params }),
+  create: (data) => api.post('/api/v2/ratings', data),
+  getByTrip: (tripId) => api.get(`/api/v2/ratings/trip/${tripId}`),
+  getByDriver: (driverId) => api.get(`/api/v2/ratings/driver/${driverId}`),
+  getDriverStats: (driverId) => api.get(`/api/v2/ratings/driver/${driverId}/stats`)
+};
+
+export const reportAPI = {
+  tripSummary: (params) => api.get('/api/v2/reports/trips/summary', { params }),
+  dailyBreakdown: (params) => api.get('/api/v2/reports/trips/daily', { params }),
+  driverPerformance: (params) => api.get('/api/v2/reports/drivers', { params }),
+  vehicleUtilization: (params) => api.get('/api/v2/reports/vehicles', { params }),
+  employeeUsage: (params) => api.get('/api/v2/reports/employees', { params }),
+  shiftReport: (params) => api.get('/api/v2/reports/shifts', { params }),
+  routeReport: (params) => api.get('/api/v2/reports/routes', { params }),
+  incidentReport: (params) => api.get('/api/v2/reports/incidents', { params }),
+  exportCSV: (type, params) => api.get(`/api/v2/reports/export/${type}`, { params, responseType: 'blob' })
+};
+
+export const hrAPI = {
+  getDashboard: () => api.get('/api/v2/hr/dashboard'),
+  getRoster: () => api.get('/api/v2/hr/roster'),
+  getShiftTransport: (params) => api.get('/api/v2/hr/shift-transport', { params }),
+  getCompliance: () => api.get('/api/v2/hr/compliance'),
+  getSafety: () => api.get('/api/v2/hr/safety')
+};
+
+export const gateAPI = {
+  checkIn: (data) => api.post('/api/v2/gate/check-in', data),
+  checkOut: (data) => api.post('/api/v2/gate/check-out', data),
+  getLogs: (params) => api.get('/api/v2/gate/logs', { params }),
+  search: (q) => api.get('/api/v2/gate/search', { params: { q } }),
+  logException: (data) => api.post('/api/v2/gate/exception', data)
+};
+
+export const settingsAPI = {
+  getAll: () => api.get('/api/v2/settings'),
+  getByCategory: (category) => api.get(`/api/v2/settings/${category}`),
+  update: (settings) => api.put('/api/v2/settings', { settings })
+};
+
 export default api;
