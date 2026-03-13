@@ -19,6 +19,15 @@ import LiveTrackingPage from './pages/LiveTrackingPage';
 import DriverDashboardPage from './pages/DriverDashboardPage';
 import EmployeeDashboardPage from './pages/EmployeeDashboardPage';
 import EmployeeTrackingPage from './pages/EmployeeTrackingPage';
+import BookRidePage from './pages/BookRidePage';
+import MyTripsPage from './pages/MyTripsPage';
+import HRDashboardPage from './pages/HRDashboardPage';
+import ReportsPage from './pages/ReportsPage';
+import TripManagementPage from './pages/TripManagementPage';
+import DriverManagementPage from './pages/DriverManagementPage';
+import VehicleManagementPage from './pages/VehicleManagementPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
+import NotificationsPage from './pages/NotificationsPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import SecurityGatePage from './pages/SecurityGatePage';
@@ -103,6 +112,54 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route
+              path="/hr-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['HR_ADMIN', 'ADMIN']}>
+                  <HRDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute allowedRoles={['HR_ADMIN', 'ADMIN']}>
+                  <ReportsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/trip-management"
+              element={
+                <ProtectedRoute allowedRoles={['HR_ADMIN', 'ADMIN']}>
+                  <TripManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/driver-management"
+              element={
+                <ProtectedRoute allowedRoles={['HR_ADMIN', 'ADMIN']}>
+                  <DriverManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/vehicle-management"
+              element={
+                <ProtectedRoute allowedRoles={['HR_ADMIN', 'ADMIN']}>
+                  <VehicleManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute allowedRoles={['HR_ADMIN', 'ADMIN']}>
+                  <AdminSettingsPage />
+                </ProtectedRoute>
+              }
+            />
             <Route 
               path="/users" 
               element={
@@ -179,8 +236,25 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/book-ride"
+              element={
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'USER']}>
+                  <BookRidePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-trips"
+              element={
+                <ProtectedRoute allowedRoles={['EMPLOYEE', 'USER']}>
+                  <MyTripsPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Common Routes */}
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
           </Route>
         </Route>

@@ -32,7 +32,11 @@ export function useDriverLocation(enabled, onLocation) {
           setLocationError(null);
           onLocation?.({
             latitude: position.coords.latitude,
-            longitude: position.coords.longitude
+            longitude: position.coords.longitude,
+            speed: position.coords.speed,
+            heading: position.coords.heading,
+            accuracy: position.coords.accuracy,
+            altitude: position.coords.altitude
           });
         }
       );

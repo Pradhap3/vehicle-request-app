@@ -14,7 +14,12 @@ import {
   Bell,
   ChevronDown,
   Globe,
-  ShieldCheck
+  ShieldCheck,
+  Briefcase,
+  FileBarChart,
+  Settings,
+  CarFront,
+  Waypoints
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -33,6 +38,8 @@ const languageOptions = [
 const Layout = () => {
   const { user, logout, updateUser, isAdmin, isDriver, isEmployee } = useAuth();
   const isSecurity = user?.role === 'SECURITY';
+  const isHrAdmin = user?.role === 'HR_ADMIN';
+  const isPlatformAdmin = user?.role === 'ADMIN';
   const { connected } = useSocket();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
@@ -127,31 +134,57 @@ const Layout = () => {
   }, [user?.id]);
 
   const getNavItems = () => {
-    if (isAdmin) {
+    if (isHrAdmin) {
       return [
         { path: '/dashboard', icon: LayoutDashboard, label: t('nav_dashboard') },
+        { path: '/hr-dashboard', icon: Briefcase, label: 'HR Dashboard' },
         { path: '/requests', icon: ClipboardList, label: t('nav_requests') },
+        { path: '/trip-management', icon: Waypoints, label: 'Trip Management' },
+        { path: '/driver-management', icon: Users, label: 'Driver Management' },
+        { path: '/vehicle-management', icon: CarFront, label: 'Vehicle Management' },
+        { path: '/reports', icon: FileBarChart, label: 'Reports' },
         { path: '/users', icon: Users, label: t('nav_users') },
         { path: '/cabs', icon: Car, label: t('nav_cabs') },
         { path: '/routes', icon: Route, label: t('nav_routes') },
-        { path: '/tracking', icon: MapPin, label: t('nav_tracking') }
+        { path: '/tracking', icon: MapPin, label: t('nav_tracking') },
+        { path: '/notifications', icon: Bell, label: 'Notifications' },
+        { path: '/settings', icon: Settings, label: 'Settings' }
+      ];
+    }
+    if (isPlatformAdmin) {
+      return [
+        { path: '/dashboard', icon: LayoutDashboard, label: t('nav_dashboard') },
+        { path: '/trip-management', icon: Waypoints, label: 'Trip Management' },
+        { path: '/driver-management', icon: Users, label: 'Driver Management' },
+        { path: '/vehicle-management', icon: CarFront, label: 'Vehicle Management' },
+        { path: '/reports', icon: FileBarChart, label: 'Reports' },
+        { path: '/users', icon: Users, label: t('nav_users') },
+        { path: '/cabs', icon: Car, label: t('nav_cabs') },
+        { path: '/routes', icon: Route, label: t('nav_routes') },
+        { path: '/tracking', icon: MapPin, label: t('nav_tracking') },
+        { path: '/notifications', icon: Bell, label: 'Notifications' },
+        { path: '/settings', icon: Settings, label: 'Settings' }
       ];
     }
     if (isDriver) {
       return [
-        { path: '/driver', icon: LayoutDashboard, label: 'Driver Operations' }
+        { path: '/driver', icon: LayoutDashboard, label: 'Driver Operations' },
+        { path: '/notifications', icon: Bell, label: 'Notifications' }
       ];
     }
     if (isEmployee) {
       return [
         { path: '/employee', icon: LayoutDashboard, label: 'My Transport' },
-        { path: '/requests', icon: ClipboardList, label: 'My Requests' },
-        { path: '/employee/tracking', icon: MapPin, label: 'Live Tracking' }
+        { path: '/book-ride', icon: CarFront, label: 'Book Ride' },
+        { path: '/my-trips', icon: ClipboardList, label: 'My Trips' },
+        { path: '/employee/tracking', icon: MapPin, label: 'Live Tracking' },
+        { path: '/notifications', icon: Bell, label: 'Notifications' }
       ];
     }
     if (isSecurity) {
       return [
-        { path: '/security/gate', icon: ShieldCheck, label: 'Gate Control' }
+        { path: '/security/gate', icon: ShieldCheck, label: 'Gate Control' },
+        { path: '/notifications', icon: Bell, label: 'Notifications' }
       ];
     }
     return [
