@@ -131,8 +131,19 @@ class Booking {
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `);
 
-    const countResult = await pool.request()
-      .query(`SELECT COUNT(*) as total FROM bookings b ${where.replace(/@\w+/g, 'NULL')}`);
+    const countReq = pool.request();
+    if (filters.employee_id) countReq.input('employeeId', sql.Int, filters.employee_id);
+    if (filters.status) countReq.input('status', sql.NVarChar(50), filters.status);
+    if (filters.booking_type) countReq.input('bookingType', sql.NVarChar(50), filters.booking_type);
+    if (filters.date) countReq.input('date', sql.Date, filters.date);
+    if (filters.from_date && filters.to_date) {
+      countReq.input('fromDate', sql.DateTime, new Date(filters.from_date));
+      countReq.input('toDate', sql.DateTime, new Date(filters.to_date));
+    }
+    if (filters.route_id) countReq.input('routeId', sql.Int, filters.route_id);
+    if (filters.shift_id) countReq.input('shiftId', sql.Int, filters.shift_id);
+    const countResult = await countReq
+      .query(`SELECT COUNT(*) as total FROM bookings b ${where}`);
 
     return {
       data: result.recordset,
