@@ -19,6 +19,8 @@ const SmartAllocationService = require('./ai/SmartAllocationService');
 const DelayMonitoringService = require('./services/DelayMonitoringService');
 const RecurringTransportService = require('./services/RecurringTransportService');
 const SchemaBootstrapService = require('./services/SchemaBootstrapService');
+const { setupSocketHandlers } = require('./sockets/handlers');
+const { setupCronJobs: setupCronJobsV2 } = require('./jobs');
 
 const app = express();
 const server = http.createServer(app);
@@ -133,37 +135,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
-
-  // Join room based on user role
-  socket.on('join_role', (role) => {
-    const room = typeof role === 'string' ? role : (role && (role.room || role.role || role.name)) || 'unknown';
-    socket.join(room);
-    if (role && role.userId) {
-      socket.join(`user_${role.userId}`);
-    }
-    logger.info(`Socket ${socket.id} joined room: ${room}`);
-  });
-
-  // Driver location updates
-  socket.on('driver_location', (data) => {
-    io.to('HR_ADMIN').emit('cab_location_update', data);
-  });
-
-  // Trip status updates
-  socket.on('trip_status', (data) => {
-    io.to('HR_ADMIN').emit('trip_status_update', data);
-    if (data.employee_id) {
-      io.to(`user_${data.employee_id}`).emit('trip_status_update', data);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
-  });
-});
+// Socket.IO connection handling (enhanced V2 handlers)
+setupSocketHandlers(io);
 
 // Scheduled tasks
 const setupCronJobs = () => {
@@ -251,8 +224,8 @@ const startServer = async () => {
     // Initialize email service
     await EmailService.initialize();
     
-    // Setup cron jobs
-    setupCronJobs();
+    // Setup cron jobs (V2 with enhanced jobs)
+    setupCronJobsV2(io);
     
     // Start server
     server.listen(PORT, () => {

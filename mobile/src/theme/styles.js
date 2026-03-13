@@ -16,6 +16,9 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
+  shellContent: {
+    flex: 1
+  },
   screen: {
     padding: 16,
     gap: 16
@@ -98,6 +101,17 @@ export const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '600'
   },
+  dangerButton: {
+    borderRadius: 12,
+    backgroundColor: colors.danger,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: 'center'
+  },
+  dangerButtonText: {
+    color: '#fff',
+    fontWeight: '700'
+  },
   metricGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -149,5 +163,109 @@ export const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.danger
+  },
+  helperText: {
+    fontSize: 13,
+    color: colors.muted
+  },
+  tabBar: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface
+  },
+  tabButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background
+  },
+  tabButtonActive: {
+    backgroundColor: colors.primary
+  },
+  tabButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.muted
+  },
+  tabButtonTextActive: {
+    color: '#fff'
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  backButtonText: {
+    color: colors.text,
+    fontWeight: '600'
+  },
+  infoGrid: {
+    gap: 12
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: colors.muted
+  },
+  infoValue: {
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'right'
+  },
+  textArea: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: colors.text,
+    minHeight: 96,
+    textAlignVertical: 'top'
+  },
+  pill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#d1fae5'
+  },
+  pillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryDark
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border
+  },
+  rowWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10
+  },
+  emptyState: {
+    paddingVertical: 24,
+    alignItems: 'center'
+  },
+  emptyStateText: {
+    color: colors.muted,
+    fontSize: 14
   }
 });

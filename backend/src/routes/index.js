@@ -426,6 +426,20 @@ router.get('/security/gate/logs',
   securityGateController.getLogs
 );
 
+// ==================== NEW MODULAR ROUTES (V2) ====================
+router.use('/v2/bookings', require('./bookings'));
+router.use('/v2/trips', require('./tripsV2'));
+router.use('/v2/vehicles', require('./vehicles'));
+router.use('/v2/drivers', require('./drivers'));
+router.use('/v2/vendors', require('./vendors'));
+router.use('/v2/shifts', require('./shifts'));
+router.use('/v2/incidents', require('./incidents'));
+router.use('/v2/ratings', require('./ratings'));
+router.use('/v2/reports', require('./reports'));
+router.use('/v2/hr', require('./hr'));
+router.use('/v2/gate', require('./gate'));
+router.use('/v2/settings', require('./settings'));
+
 // ==================== HEALTH CHECK ====================
 router.get('/health', (req, res) => {
   res.json({
