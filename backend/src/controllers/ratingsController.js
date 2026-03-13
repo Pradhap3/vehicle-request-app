@@ -7,14 +7,15 @@ exports.create = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, error: 'trip_id and rating (1-5) are required' });
   }
 
-  const existing = await Rating.findByTripId(trip_id);
+  const parsedTripId = parseInt(trip_id);
+  const existing = await Rating.findByTripId(parsedTripId);
   if (existing.some(r => r.rated_by === req.user.id)) {
     return res.status(409).json({ success: false, error: 'You already rated this trip' });
   }
 
   const result = await Rating.create({
-    trip_id, booking_id, rated_by: req.user.id,
-    driver_id, rating, feedback, categories
+    trip_id: parsedTripId, booking_id, rated_by: req.user.id,
+    driver_id: driver_id ? parseInt(driver_id) : null, rating, feedback, categories
   });
   res.status(201).json({ success: true, data: result });
 });
